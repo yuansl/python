@@ -6,7 +6,7 @@
  * http://www.xiami.com/song/playlist/id/82479/object_name/default/object_id/0 
  * this is just a xml file, the real location (I mean *.mp3 or other form )is 
  * marked as <Location>, but the value string is encoded with an algorithm,
- * so, the follow parser decode it.
+ * so, the follow parser will deal with it.
  */
 void parsestr(const char *str)
 {
