@@ -8,7 +8,8 @@
  * marked as <Location>, but the value string is encoded with an algorithm,
  * so, the follow parser will deal with it.
  */
-void parsestr(const char *str)
+static char real_ret[1024];
+char *parsestr(const char *str)
 {
 	int slen = strlen(str + 1);
 	int rows = str[0] - '0';
@@ -16,7 +17,7 @@ void parsestr(const char *str)
 	int right_rows = slen % rows;
 	char new_str[rows][cols + 2];
 	const char *p = str + 1;
-	char ret[1024], real_ret[1024];
+	char ret[1024];
 	int i, j, ct;
 	
 	for (i = 0; i < right_rows; i++) {
@@ -66,4 +67,5 @@ void parsestr(const char *str)
 		} 
 		real_ret[i++] = *p++;
 	}
+	return real_ret;
 }
