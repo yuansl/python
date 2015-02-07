@@ -26,7 +26,7 @@ def main(url):
                 t.start()
                 
 if __name__ == '__main__':
-        main("http://site.douban.com/your_playlist")
+        main("http://site.douban.com/huazhou/")
         for t in threads:
                 t.join()
 
