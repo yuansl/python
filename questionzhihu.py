@@ -20,7 +20,7 @@ headers = {
         "Pragma":"no-cache",
         "Cache-Control":"no-cache" }
 
-question = raw_input("input your question for query: ")
+question = raw_input("query string: ")
 url = 'http://www.zhihu.com/search?q=%s&type=question' % question
 url = url.strip().replace(' ', '%20').replace('\\x', '%')
 
