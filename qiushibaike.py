@@ -100,16 +100,8 @@ if __name__ == '__main__':
         fd.write(html)
         fd.close()
     else:
-        fd = open('page3.html')
+        fd = open('index.html')
         html = fd.read()
         fd.close()
         get_article(html)
-        '''
-        bsobj = BeautifulSoup(html, 'lxml')
-        spans = bsobj.findAll('span', {'class':'page-numbers'})
-        for span in spans:
-        a = span.parent
-        if 'href' in a.attrs:
-            print('page %d: %s' % (int(span.text.strip()), a['href']))
-    
-        '''        
+        

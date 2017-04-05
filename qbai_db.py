@@ -40,7 +40,7 @@ def insert_user(user_id='0001', user_name='', gender='male', age=0, constellatio
     db_conn.close()
     
 def insert_article(article_id, content, author_name):
-    db_conn = dbconn_QBAI('root', 'hanxiaopei')
+    db_conn = dbconnect('root', 'hanxiaopei')
     cursor = db_conn.cursor()
     
     cursor.execute('insert into article(\
