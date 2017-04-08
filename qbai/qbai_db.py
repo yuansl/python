@@ -1,107 +1,98 @@
 #!/usr/bin/python3
 
-import re
-import requests
-from bs4 import BeautifulSoup
-import bs4
-from urllib import request
-import qbai_db
 import os
 
-def get_god_comment(article_id):
-    article_url = 'http://www.qiushibaike.com'
+def db_connect(user='root', password=''):
+    import pymysql
+    db_conn = pymysql.connect(user=user,passwd=password,port=3306,host='localhost',db='QBAI', charset='utf8mb4')
 
-def get_article(html):
-    bsobj = BeautifulSoup(html, 'lxml')
-    articles = bsobj.findAll('div', id=re.compile('qiushi_tag_\d+'))
-    for article in articles:
-        div = article.find('div', {'class': re.compile('author')})
-        a = div.find('a', title=re.compile('\w+'))
+    return db_conn
 
-        if a is None:
-            continue
-        user_href = a['href']
-        user_id = user_href[7:].strip('/')
-        user_name = a.text.strip()
-        div = div.find('div', {'class':re.compile('articleGender')})
-        if div is not None:
-            age = div.text.strip()
-        else:
-            age = 0
-        
-        #save_user_info(user_id)
-        
-        a = article.find('a', {'class':'contentHerf'})
-        if a is None:
-            continue
-        # /article/0000000
-        article_id = a['href'][9:].strip()
-        content = a.text.strip()
+def insert_user(uid,uname='',gender='male',age=0,constel='',marrage='single',career='',homeland='China',qb_age='0 day',smilefaces=0,fans=0,comments=0):
+    db_conn = db_connect('root', 'mariadb')
+    cursor = db_conn.cursor()
+    cursor.execute('insert into user(\
+    user_id,\
+    user_name,\
+    gender,\
+    age,\
+    constellation,\
+    marrage,\
+    career,\
+    homeland,\
+    qb_age,\
+    smile_faces,\
+    fans,\
+    comments) values(\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s,\
+    %s)', (uid,uname,gender,str(age),constel,marrage,career,homeland,qb_age,str(smilefaces),str(fans),str(comments)))
+    db_conn.commit()
+    cursor.close()
+    db_conn.close()
 
-        a = article.find('a', {'class':'indexGodCmt'})
-        if a is not None:
-            god_name = a.find('span', {'class':'cmt-name'}).text.strip().replace('\n', '')
-            god_comment = a.find('div', {'class':'main-text'}).text.strip().replace('\n', '')
-        else:
-            god_name = ''
-            god_comment = ''
-
-        qbai_db.insert_article(article_id, content, user_name)
-        
-def save_user_info(user_id):
-    if not os.path.exists(str(user_id) + '.html'):
-        user_url = 'http://www.qiushibaike.com/users/' + str(user_id)
-        resp = requests.get(user_url)
-        html = resp.text
-        fd = open(str(user_id) + '.html', 'w')
-        fd.write(html)
-        fd.close()
-    else:
-        fd = open(str(user_id) + '.html')
-        html = fd.read()
-        fd.close()
-
-    user_info = []
-    bsobj = BeautifulSoup(html, 'lxml')
-    userinf_div = bsobj.find('div', {'class' : 'user-col-left'})
-    for ul in userinf_div.findAll('ul'):
-        for li in ul.findAll('li'):
-            user_info.append(li.text.strip())
-            
-    div = bsobj.find('div', {'class':'user-header-cover'})
-    if div is None:
-        return
+def user_exists(user_id):
+    db_conn = db_connect('root', 'mariadb')
+    cursor = db_conn.cursor()
+    rows = cursor.execute('select user_id from user where user_id = %s', (user_id))
+    cursor.close()
+    db_conn.close()
     
-    uname = div.text.strip()
-    fans = user_info[0]
-    fans = int(fans[fans.index(':')+1:])
-    comments = user_info[3]
-    comments = int(comments[comments.index(':')+1:])
-    smile_faces = user_info[4]
-    smile_faces = int(smile_faces[smile_faces.index(':')+1:])
-    marrage = user_info[6]
-    marrage = marrage[marrage.index(':')+1:]
-    constellation = user_info[7]
-    constellation = constellation[constellation.index(':')+1:]
-    career = user_info[8]
-    career = career[career.index(':')+1:]
-    homeland = user_info[9]
-    homeland = homeland[homeland.index(':')+1:]
-    qage = user_info[10]
-    qage = qage[qage.index(':')+1:]
+    if rows > 0:
+        return True
+    return False
+
+def get_all_users():
+    saved_users = set()
+    db_conn = db_connect('root', 'mariadb')
+    cursor = db_conn.cursor()
+    rows = cursor.execute('select user_id from user')
+    while rows > 0:
+        result = cursor.fetchone()
+        saved_users.add(result[0])
+        rows -= 1
+
+    cursor.close()
+    db_conn.close()
+    return rows, saved_users
+def article_exists(article_id):
+    db_conn = db_connect('root', 'mariadb')
+    cursor = db_conn.cursor()
+    rows = cursor.execute('select article_id from article where article_id = %s', (article_id))
+    cursor.close()
+    db_conn.close()
     
-    qbai_db.dbinsert_user(user_id=user_id, user_name=uname, marrage=marrage, gender='male', constellation=constellation, career=career, smile_faces=smile_faces, fans=fans, comments=comments, qb_age=qage)
+    if rows > 0:
+        return True
+    return False
+
+def insert_article(article_id, author, location):
+    db_conn = db_connect('root', 'mariadb')
+    cursor = db_conn.cursor()
+    cursor.execute('insert into article(\
+    article_id,\
+    author_name,\
+    location) values(\
+    %s,\
+    %s,\
+    %s)', (article_id,author,location))
+    db_conn.commit()
+    cursor.close()
+    db_conn.close()
+
+def test():
+    article_id = '43436'
+    location = os.getcwd() + '/articles/' + article_id + '.txt'
+    insert_article(article_id, 'yuansl', location)
         
 if __name__ == '__main__':
-    if not os.path.exists('index.html'):
-        resp = requests.get('http://www.qiushibaike.com')
-        html = resp.text
-        fd = open('index.html', 'w')
-        fd.write(html)
-        fd.close()
-    else:
-        fd = open('index.html')
-        html = fd.read()
-        fd.close()
-        get_article(html)
-        
+    rows, result_sets = get_all_users()
