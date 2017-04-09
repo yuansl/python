@@ -119,15 +119,16 @@ def get_links(article_id):
     if link is not None and 'href' in link.attrs:
         uri = link['href']
         query_pos = uri.index('?')
-        for i in range(2, 36):
-            # /8hr/page/3?s=4972xxx
-            for j in range(999):
-                url = base_url + '/8hr/page/' + str(i) + '?=s=4972%03d' % (j)
+        for j in range(999):
+            for i in range(2, 36):
+                # /8hr/page/3?s=4972xxx
+                url = base_url + '/8hr/page/' + str(i) + '?s=4972%03d' % (j)
                 print('url:' + url)
                 resp = requests.get(url)
                 html = resp.text
                 get_article(html)
-                os.system("sleep 3")
+                os.system("sleep 2")
+            os.system("sleep 3")
     
 if __name__ == '__main__':
     rows, saved_users = qbai_db.get_all_users()
