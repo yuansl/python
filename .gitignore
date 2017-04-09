@@ -5,3 +5,4 @@
 *.html
 *.txt
 *.css
+__pycache__
