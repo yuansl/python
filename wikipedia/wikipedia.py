@@ -16,12 +16,17 @@ def get_links(wiki_entry):
     print('page: %s' % wiki_entry)
     looked_entries.add(wiki_entry)
     for link in links:
-        if link['href'] not in looked_entries:
-            wiki_db.insert_entry(link['title'], link['href'])
-            get_links(link['href'])
-
+        uri = link['href']
+        if uri not in looked_entries and not isforbidden(uri):
+            wiki_db.insert_entry(link['title'], uri)
+            get_links(uri)
+            
+wiki_robots_set = set()
 def robots():
     pass
+
+def isforbidden(uri):
+    return uri in wiki_robots_set
 
 if __name__ == '__main__':
     get_links("/wiki/linus_torvalds")
