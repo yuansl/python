@@ -20,8 +20,12 @@ headers = {
         "Pragma":"no-cache",
         "Cache-Control":"no-cache" }
 
-question = raw_input("query string: ")
-url = 'http://www.zhihu.com/search?q=%s&type=question' % question
+question = raw_input("Please input your question: ")
+query_dict = {'q': question, 'type': 'question', 'offset': '200'}
+query = urllib.urlencode(query_dict)
+
+url = 'http://www.zhihu.com/search?' + query
+
 url = url.strip().replace(' ', '%20').replace('\\x', '%')
 
 try:
