@@ -19,7 +19,6 @@ class wiki_db():
     def db_delete(self, fetch_key):
         """
         Delete a record from database specified by the condition.
-        Not supported
         """
         if self.db_fetch(fetch_key) is not None:
             cursor = self.db_conn.cursor()
