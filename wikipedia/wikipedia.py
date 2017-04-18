@@ -5,15 +5,15 @@ import re
 import wiki_db
 from bs4 import BeautifulSoup
 
-db = wiki_db.wiki_db()
+entry = wiki_db.wiki_db()
 def get_links(wiki_entry):
     resp = requests.get('https://en.wikipedia.org' + wiki_entry)
     bsobj = BeautifulSoup(resp.text, 'lxml')
     links = bsobj.findAll('a', href=re.compile('^/wiki/((?!:).)*$'))
     for link in links:
-        if db.db_fetch(link['href']) is None:
+        if entry.db_fetch(link['href']) is None:
             print('link:' + link['href'])
-            db.db_store(link['title'], link['href'])
+            entry.db_store(link['title'], link['href'])
             get_links(link['href'])
             
 if __name__ == '__main__':
