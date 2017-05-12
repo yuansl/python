@@ -128,8 +128,7 @@ def get_links(article_id):
                 resp = requests.get(url)
                 html = resp.text
                 get_article(html)
-                os.system("sleep 2")
-            os.system("sleep 3")
+                time.sleep(2)
         time.sleep(10)
     
 if __name__ == '__main__':
