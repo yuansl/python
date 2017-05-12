@@ -7,6 +7,7 @@ import bs4
 from urllib import request
 import qbai_db
 import os
+import time
 
 saved_users = set()
 
@@ -129,6 +130,7 @@ def get_links(article_id):
                 get_article(html)
                 os.system("sleep 2")
             os.system("sleep 3")
+        time.sleep(10)
     
 if __name__ == '__main__':
     rows, saved_users = qbai_db.get_all_users()
