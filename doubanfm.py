@@ -188,7 +188,10 @@ class SoundCloudSource(RB.StreamingSource):
 					print(str(e))
 			"""
 			db.entry_set(entry, RB.RhythmDBPropType.MB_ALBUMID, item.get('albumtitle', ''))
-			release_year = int(item.get('public_time', '0'))
+			public_time = item.get('public_time', '2017')
+			if public_time == '':
+				public_time = '2017'
+			release_year = int(public_time)
 			date = GLib.Date.new_dmy(item.get('release_day', 1), item.get('release_month', 1), release_year)
 			db.entry_set(entry, RB.RhythmDBPropType.DATE, date.get_julian())
 		db.commit()
@@ -280,13 +283,13 @@ class SoundCloudSource(RB.StreamingSource):
 		"""
 		if term.startswith('https://soundcloud.com/') or term.startswith("http://soundcloud.com/"):
 			# ignore the selected search type and try to resolve whatever the url is
-			print("resolving " + term)
 			self.scrolled.hide()
 			url = base + '/resolve.json?url=' + term + '&client_id=' + CLIENT_ID
 			self.loader = rb.Loader()
 			self.loader.get_url(url, self.resolve_api_cb)
 			return
 		"""
+		
 		if self.search_type not in self.search_types:
 			print("not sure how to search for " + self.search_type)
 			return
@@ -294,15 +297,10 @@ class SoundCloudSource(RB.StreamingSource):
 		print("searching for " + self.search_type + " matching " + term)
 		st = self.search_types[self.search_type]
 		self.container_view.get_column(0).set_title(st['title'])
-
-		#url = base + st['endpoint'] + '?q=' + urllib.parse.quote(term) + '&client_id=' + CLIENT_ID
-
-		# DEBUG: test for douban.fm
-		query = { 'channel':'0', 'kbps':'192', 'client':'s:mainsite|y:3.0', 'app_name':'radio_website', 'version':'100', 'type':'n' }
-		query['channel'] = '153' # work MHZ
 		
-		host = 'https://douban.fm/j/v2/playlist'
-		url = host + '/?' + parse.urlencode(query)
+		query = { 'q': term, 'start':'0', 'limit':'5' }
+		base = 'https://douban.fm/j/v2/query/all'
+		url = base + '?' + parse.urlencode(query)
 		
 		self.loader = rb.Loader()
 		if st['containers']:
@@ -310,35 +308,23 @@ class SoundCloudSource(RB.StreamingSource):
 			self.loader.get_url(url, self.search_containers_api_cb)
 		else:
 			self.scrolled.hide()
-			#self.loader.get_url(url, self.search_tracks_api_cb)
-
 			from selenium import webdriver
 			browser = webdriver.PhantomJS()
-			song_num = self.doubanfm_get_channel_info(browser, '153')
-			print('song_num: %d' % song_num)
-			song_num = 1
-			count = 0
-			next = True
-			while next and count < 4:
-				data = self.doubanfm_get_songinfo(browser, query, song_num)
-				if data is None:
-					print("WARNING: data is None")
-					break
-				else:
-					print('song: ', str(data))
-					
-				if 'sid' in data[0]:
-					next = True
-					query['sid'] = data[0]['sid']
-					query['type'] = 'p'
-					query['pt'] = ''
-					query['pb'] = '128'
-					query['apikey'] = ''
-				else:
-					next = False
-				self.search_tracks_api_cb(data)
-				time.sleep(2)
-				count += 1
+			browser.get(url)
+			body = browser.find_element_by_tag_name('body')
+			data = json.loads(body.text)
+			type_song = data[1]
+			songs = type_song['items']
+			type_songlist = data[3]['items']
+			for song in type_songlist:
+				url = 'https://douban.fm/j/v2/songlist/%s/?kbps=192' % song['id']
+				browser.get(url)
+				body = browser.find_element_by_tag_name('body')
+				data = json.loads(body.text)
+				for item in data['songs']:
+					songs.append(item)
+			
+			self.search_tracks_api_cb(songs)
 			
 	def doubanfm_get_channel_info(self, browser, id):
 		url = 'https://douban.fm/j/v2/channel_info?id=%s' % id
@@ -352,7 +338,7 @@ class SoundCloudSource(RB.StreamingSource):
 		song_num = channels[0].get('song_num', 0)
 		return song_num
 			
-	def doubanfm_get_songinfo(self, browser, data, song_num):
+	def doubanfm_get_songinfo(self, browser, data):
 		host = 'https://douban.fm/j/v2/playlist'
 		url = host + '/?' + parse.urlencode(data)
 		print('url: ', url)
