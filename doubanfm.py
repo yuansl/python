@@ -23,6 +23,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA.
+#!/usr/bin/python3
 
 from gi.repository import Gtk, Gdk, GObject, Gio, GLib, Peas
 from gi.repository import RB
@@ -45,7 +46,7 @@ class SoundCloudEntryType(RB.RhythmDBEntryType):
 
 	def do_get_playback_uri(self, entry):
 		uri = entry.get_string(RB.RhythmDBPropType.MOUNTPOINT)
-		return uri + "?client_id=" + CLIENT_ID
+		return uri
 
 	def do_can_sync_metadata(self, entry):
 		return False
@@ -93,30 +94,30 @@ class SoundCloudSource(RB.StreamingSource):
 		self.search_count = 1
 		self.search_types = {
 			'tracks': {
-				'label': _("Search tracks"),
-				'placeholder': _("Search tracks on SoundCloud"),
+				'label': _("Search tracks MHZ"),
+				'placeholder': _("Search tracks on douban.fm"),
 				'title': "",	# container view is hidden
 				'endpoint': '/tracks.json',
 				'containers': False
 			},
 			'sets': {
 				'label': _("Search sets"),
-				'placeholder': _("Search sets on SoundCloud"),
-				'title': _("SoundCloud Sets"),
+				'placeholder': _("Search sets on douban.fm"),
+				'title': _("douban.fm Sets"),
 				'endpoint': '/playlists.json',
 				'containers': True
 			},
 			'users': {
 				'label': _("Search users"),
-				'placeholder': _("Search users on SoundCloud"),
-				'title': _("SoundCloud Users"),
+				'placeholder': _("Search users on douban.fm"),
+				'title': _("douban.fm Users"),
 				'endpoint': '/users.json',
 				'containers': True
 			},
 			'groups': {
 				'label': _("Search groups"),
-				'placeholder': _("Search groups on SoundCloud"),
-				'title': _("SoundCloud Groups"),
+				'placeholder': _("Search groups on douban.fm"),
+				'title': _("douban.fm Groups"),
 				'endpoint': '/groups.json',
 				'containers': True
 			},
@@ -174,16 +175,11 @@ class SoundCloudSource(RB.StreamingSource):
 			for singer in item['singers']:
 				for gen in singer['genre']:
 					genre = genre + gen
-			if genre is not '':
-				db.entry_set(entry, RB.RhythmDBPropType.GENRE, genre)
+			db.entry_set(entry, RB.RhythmDBPropType.GENRE, genre)
 			db.entry_set(entry, RB.RhythmDBPropType.DURATION, item['length'])
+			db.entry_set(entry, RB.RhythmDBPropType.BEATS_PER_MINUTE, int(item.get('kbps', '128')))
 			"""
-			if item['bpm'] is not None:
-				db.entry_set(entry, RB.RhythmDBPropType.BEATS_PER_MINUTE, item['bpm'])
-
-			if item['description'] is not None:
-				db.entry_set(entry, RB.RhythmDBPropType.COMMENT, item['description'])
-
+			db.entry_set(entry, RB.RhythmDBPropType.COMMENT, 'some comments')
 			if item['created_at'] is not None:
 				try:
 					dt = datetime.strptime(item['created_at'], '%Y/%m/%d %H:%M:%S %z')
@@ -191,13 +187,10 @@ class SoundCloudSource(RB.StreamingSource):
 				except Exception as e:
 					print(str(e))
 			"""
-			if item['albumtitle'] is not None:
-				db.entry_set(entry, RB.RhythmDBPropType.MB_ALBUMID, item['albumtitle'])
-
-			if item['public_time'] is not None:
-				date = GLib.Date.new_dmy(item.get('release_day', 1), item.get('release_month', 1), int(item['public_time']))
-				db.entry_set(entry, RB.RhythmDBPropType.DATE, date.get_julian())
-
+			db.entry_set(entry, RB.RhythmDBPropType.MB_ALBUMID, item.get('albumtitle', ''))
+			release_year = int(item.get('public_time', '0'))
+			date = GLib.Date.new_dmy(item.get('release_day', 1), item.get('release_month', 1), release_year)
+			db.entry_set(entry, RB.RhythmDBPropType.DATE, date.get_julian())
 		db.commit()
 
 	def add_container(self, item):
@@ -215,15 +208,7 @@ class SoundCloudSource(RB.StreamingSource):
 		shell = self.props.shell
 		db = shell.props.db
 		entry_type = self.props.entry_type
-		
-		"""
-		data = data.decode('utf-8')
-		stuff = json.loads(data)
-		print('stuff: ', str(stuff))
-		"""
 		for song in data:
-			print('entry_type: ', entry_type, ' key: ', song)
-			# item should be a set
 			self.add_track(db, entry_type, song)
 
 	def search_containers_api_cb(self, data):
@@ -289,11 +274,10 @@ class SoundCloudSource(RB.StreamingSource):
 	def do_search(self):
 		self.cancel_request()
 
-		base = 'https://api.soundcloud.com'
 		self.new_model()
 		self.containers.clear()
 		term = self.search_text
-
+		"""
 		if term.startswith('https://soundcloud.com/') or term.startswith("http://soundcloud.com/"):
 			# ignore the selected search type and try to resolve whatever the url is
 			print("resolving " + term)
@@ -302,7 +286,7 @@ class SoundCloudSource(RB.StreamingSource):
 			self.loader = rb.Loader()
 			self.loader.get_url(url, self.resolve_api_cb)
 			return
-
+		"""
 		if self.search_type not in self.search_types:
 			print("not sure how to search for " + self.search_type)
 			return
@@ -311,13 +295,15 @@ class SoundCloudSource(RB.StreamingSource):
 		st = self.search_types[self.search_type]
 		self.container_view.get_column(0).set_title(st['title'])
 
-		url = base + st['endpoint'] + '?q=' + urllib.parse.quote(term) + '&client_id=' + CLIENT_ID
+		#url = base + st['endpoint'] + '?q=' + urllib.parse.quote(term) + '&client_id=' + CLIENT_ID
 
 		# DEBUG: test for douban.fm
-		query = { 'kbps':'192', 'client':'s:mainsite|y:3.0', 'app_name':'radio_website', 'version':'100', 'type':'n' }
-		query['channel'] = '153'
+		query = { 'channel':'0', 'kbps':'192', 'client':'s:mainsite|y:3.0', 'app_name':'radio_website', 'version':'100', 'type':'n' }
+		query['channel'] = '153' # work MHZ
+		
 		host = 'https://douban.fm/j/v2/playlist'
 		url = host + '/?' + parse.urlencode(query)
+		
 		self.loader = rb.Loader()
 		if st['containers']:
 			self.scrolled.show()
@@ -325,31 +311,39 @@ class SoundCloudSource(RB.StreamingSource):
 		else:
 			self.scrolled.hide()
 			#self.loader.get_url(url, self.search_tracks_api_cb)
+
 			from selenium import webdriver
 			browser = webdriver.PhantomJS()
 			song_num = self.doubanfm_get_channel_info(browser, '153')
 			print('song_num: %d' % song_num)
-			song_num = 5
+			song_num = 1
 			count = 0
-			next = False
-			while count < song_num:
-				data = self.doubanfm_get_songinfo(browser, query, song_num, next)
+			next = True
+			while next and count < 4:
+				data = self.doubanfm_get_songinfo(browser, query, song_num)
 				if data is None:
 					print("WARNING: data is None")
+					break
 				else:
 					print('song: ', str(data))
 					
 				if 'sid' in data[0]:
 					next = True
 					query['sid'] = data[0]['sid']
-
+					query['type'] = 'p'
+					query['pt'] = ''
+					query['pb'] = '128'
+					query['apikey'] = ''
+				else:
+					next = False
 				self.search_tracks_api_cb(data)
+				time.sleep(2)
 				count += 1
 			
 	def doubanfm_get_channel_info(self, browser, id):
 		url = 'https://douban.fm/j/v2/channel_info?id=%s' % id
 		browser.get(url)
-		time.sleep(2)
+		time.sleep(1)
 		body = browser.find_element_by_tag_name('body')
 		channel_info = json.loads(body.text)
 		print('channel_info: ', str(channel_info))
@@ -358,29 +352,16 @@ class SoundCloudSource(RB.StreamingSource):
 		song_num = channels[0].get('song_num', 0)
 		return song_num
 			
-	def doubanfm_get_songinfo(self, browser, data, song_num, next):
+	def doubanfm_get_songinfo(self, browser, data, song_num):
 		host = 'https://douban.fm/j/v2/playlist'
-		next = False
-		count = 0
-		if song_num is 0:
-			song_num = 1
-		while count < song_num:
-			if next:
-				data['type'] = 'p'
-				data['pt'] = ''
-				data['pb'] = '128'
-				data['apikey'] = ''
-			url = host + '/?' + parse.urlencode(data)
-			print('url: ', url)
-			browser.get(url)
-			time.sleep(1)
-			body = browser.find_element_by_tag_name('body')
-			song_info = json.loads(body.text)
-			song = song_info.get('song', None)
-			count += 1
-			if count >= 1:
-				return song
-		return None
+		url = host + '/?' + parse.urlencode(data)
+		print('url: ', url)
+		browser.get(url)
+		time.sleep(1)
+		body = browser.find_element_by_tag_name('body')
+		song_info = json.loads(body.text)
+		song = song_info.get('song', None)
+		return song
 			
 	def selection_changed_cb(self, selection):
 		self.new_model()
@@ -430,6 +411,7 @@ class SoundCloudSource(RB.StreamingSource):
 		screen = window.get_screen()
 
 		uri = param.get_string()
+		print('URI = ' + uri)
 		Gtk.show_uri(screen, uri, Gdk.CURRENT_TIME)
 
 	def build_sc_menu(self):
@@ -441,7 +423,7 @@ class SoundCloudSource(RB.StreamingSource):
 		entry = player.get_playing_entry()
 		if entry is not None and entry.get_entry_type() == self.props.entry_type:
 			url = entry.get_string(RB.RhythmDBPropType.LOCATION)
-			menu[url] = _("View '%(title)s' on SoundCloud") % {'title': entry.get_string(RB.RhythmDBPropType.TITLE) }
+			menu[url] = _("View '%(title)s' on douban.fm") % {'title': entry.get_string(RB.RhythmDBPropType.TITLE) }
 			# artist too?
 
 
@@ -449,7 +431,7 @@ class SoundCloudSource(RB.StreamingSource):
 		if self.songs.have_selection():
 			entry = self.songs.get_selected_entries()[0]
 			url = entry.get_string(RB.RhythmDBPropType.LOCATION)
-			menu[url] = _("View '%(title)s' on SoundCloud") % {'title': entry.get_string(RB.RhythmDBPropType.TITLE) }
+			menu[url] = _("View '%(title)s' on douban.fm") % {'title': entry.get_string(RB.RhythmDBPropType.TITLE) }
 			# artist too?
 
 		# selected container
@@ -457,7 +439,7 @@ class SoundCloudSource(RB.StreamingSource):
 		(model, aiter) = selection.get_selected()
 		if aiter is not None:
 			[name, url] = model.get(aiter, 0, 3)
-			menu[url] = _("View '%(container)s' on SoundCloud") % {'container': name}
+			menu[url] = _("View '%(container)s' on douban.fm") % {'container': name}
 
 		if len(menu) == 0:
 			self.sc_button.set_menu_model(None)
@@ -533,14 +515,13 @@ class SoundCloudSource(RB.StreamingSource):
 		self.songs.append_column(RB.EntryViewColumn.TITLE, True)
 		self.songs.append_column(RB.EntryViewColumn.ARTIST, True)
 		self.songs.append_column(RB.EntryViewColumn.DURATION, True)
-		self.songs.append_column(RB.EntryViewColumn.YEAR, False)
-		self.songs.append_column(RB.EntryViewColumn.GENRE, False)
-		self.songs.append_column(RB.EntryViewColumn.BPM, False)
+		self.songs.append_column(RB.EntryViewColumn.YEAR, True)
+		self.songs.append_column(RB.EntryViewColumn.GENRE, True)
+		self.songs.append_column(RB.EntryViewColumn.BPM, True)
 		self.songs.append_column(RB.EntryViewColumn.FIRST_SEEN, False)
 		self.songs.set_model(self.props.query_model)
 		self.songs.connect("notify::sort-order", self.sort_order_changed_cb)
 		self.songs.connect("selection-changed", self.songs_selection_changed_cb)
-
 		paned = builder.get_object("paned")
 		paned.pack2(self.songs)
 
