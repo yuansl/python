@@ -27,9 +27,9 @@
 
 from gi.repository import Gtk, Gdk, GObject, Gio, GLib, Peas
 from gi.repository import RB
-import rb
 import urllib.parse
 import json
+import rb
 from datetime import datetime
 from urllib import parse
 import time
@@ -38,7 +38,6 @@ import gettext
 gettext.install('rhythmbox', RB.locale_dir())
 
 # rhythmbox app registered with soundcloud with the account notverysmart@gmail.com
-CLIENT_ID = 'e4ef6572c2baf401db2f64b4e0eae9ce'
 
 class SoundCloudEntryType(RB.RhythmDBEntryType):
 	def __init__(self):
@@ -50,7 +49,6 @@ class SoundCloudEntryType(RB.RhythmDBEntryType):
 
 	def do_can_sync_metadata(self, entry):
 		return False
-
 
 class DoubanfmPlugin(GObject.Object, Peas.Activatable):
 	__gtype_name = 'DoubanfmPlugin'
@@ -429,8 +427,11 @@ class SoundCloudSource(RB.StreamingSource):
 		data = self.doubanfm_get(url)
 		return data['songs']
 	
-	def doubanfm_fetch_cache(self, tracks_type, uri):
-		if tracks_type == 'playlist':
+	def doubanfm_fetch_cache(self, model, aiter):
+		[cache_key, kind] = model.get(aiter, 0, 1)
+		ct = self.container_types[kind]
+		tracks_type = ct['tracks-type']
+		if tracks_type == 'playolist':
 			if self.search_type == 'song':
 				data = []
 				songs = self.doubanfm_cache['song']
@@ -439,25 +440,41 @@ class SoundCloudSource(RB.StreamingSource):
 						data = [song]
 						break
 			else:
-				data = self.doubanfm_cache['songlist']
+
+				data = self.doubanfm_cache['songlist'].get(cache_key, None)
 			self.playlist_api_cb(data)
 		else:
 			if self.search_type == 'artist':
-				data = self.doubanfm_cache['artist'][self.search_type]
+				if self.doubanfm_cache.get('artist') is not None:
+					data = self.doubanfm_cache['artist'].get(cache_key, None)
+				else:
+					data = None
 			else:
-				data = self.doubanfm_cache['channel']
+				if self.doubanfm_cache.get('channel') is not None:
+					data = self.doubanfm_cache['channel'].get(cache_key, None)
+				else:
+					data = None
 			self.search_tracks_api_cb(data)
 			
-			
-	def doubanfm_retrive(self, tracks_type, uri):
+	def doubanfm_retrive(self, model, aiter):
 		self.cancel_request()
 		self.browser = webdriver.PhantomJS()
 		self.doubanfm_cache = {}
+		[title, kind, uri] = model.get(aiter, 0, 1, 2)
+		ct = self.container_types[kind]
+		tracks_type = ct['tracks-type']
 		if tracks_type == 'playlist':
 			if self.search_type == 'songlist':
 				data = self.doubanfm_get_songlist(uri)
-				self.doubanfm_cache['songlist'] = {}
-				self.doubanfm_cache['songlist'][model.title] = data
+				if self.doubanfm_cache.get('songlist') is None:
+					self.doubanfm_cache['songlist'] = None
+				
+				cache_entry = self.doubanfm_cache['songlist']
+				if cache_entry is None:
+					cache_entry = {}
+				cache_entry[title] = data
+				
+				self.doubanfm_cache['songlist'] = cache_entry
 			else:   # search_type is song
 				songs = self.doubanfm_cache['song']
 				for song in songs:
@@ -465,7 +482,7 @@ class SoundCloudSource(RB.StreamingSource):
 						data = [song]
 						break
 
-				self.playlist_api_cb(data)
+			self.playlist_api_cb(data)
 		else:
 			# tracks-type 'plain'
 			# for container type: user and group
@@ -500,11 +517,10 @@ class SoundCloudSource(RB.StreamingSource):
 		ct = self.container_types[itemtype]
 		
 		if self.doubanfm_cache_exists() is True:
-			print('artist exists %s' % self.search_type)
-			print('cache[artist] = ' + str(self.doubanfm_cache['artist']))
-			self.doubanfm_fetch_cache(ct['tracks-type'], uri)
+
+			self.doubanfm_fetch_cache(model, aiter)
 		else:
-			self.doubanfm_retrive(ct['tracks-type'], uri)
+			self.doubanfm_retrive(model, aiter)
 
 	def sort_order_changed_cb(self, obj, pspec):
 		obj.resort_model()
