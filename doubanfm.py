@@ -97,13 +97,13 @@ class SoundCloudSource(RB.StreamingSource):
 		# default search type		
 		self.default_st = 'all'
 
-		self.doubanfm_songs = None
+		self.doubanfm_cache = None
 
 		self.search_count = 1
 		self.search_types = {
 			'all': {
 				'label': _("Search all"),
-				'placeholder': _("Search everything you want on douban.fm"),
+				'placeholder': _("Search Artist/Song/MHZ/Scene on douban.fm"),
 				'title': "",	# container view is hidden
 				'endpoint': '/all.json',
 				'containers': False
@@ -259,6 +259,9 @@ class SoundCloudSource(RB.StreamingSource):
 			self.browser.delete_all_cookies()
 			self.browser.quit()
 			self.browser = None
+		if self.doubanfm_cache:
+			self.doubanfm_cache.clear()
+			self.doubanfm_cache = None
 
 	def search_popup_cb(self, widget):
 		self.search_popup.popup(None, None, None, None, 3, Gtk.get_current_event_time())
@@ -311,7 +314,11 @@ class SoundCloudSource(RB.StreamingSource):
 		
 		self.browser = webdriver.PhantomJS()
 		search_results = self.doubanfm_search()
+
+		self.doubanfm_cache = {}
 		
+		self.doubanfm_cache['song'] = search_results[1]['items']
+		self.doubanfm_cache['all'] = search_results
 		if st['containers']:
 			self.scrolled.show()
 
@@ -337,11 +344,11 @@ class SoundCloudSource(RB.StreamingSource):
 					data.append(song)
 			else:
 				if self.search_type == 'song':
-					items = self.doubanfm_songs = search_results[1]['items']
+					items = search_results[1]['items']
 					for item in items:
 						song = {}
 						song['kind'] = 'playlist'
-						song['title'] = item['title']
+						song['title'] = item['title'] + ' by ' + item['artist']
 						song['uri'] = item['id']
 						song['permalink_url'] = 'https://douban.fm/song/%sg%s/' % (item['sid'], item['ssid'])
 						data.append(song)
@@ -421,38 +428,83 @@ class SoundCloudSource(RB.StreamingSource):
 		url = self.host + songlist_path + '?' + query
 		data = self.doubanfm_get(url)
 		return data['songs']
+	
+	def doubanfm_fetch_cache(self, tracks_type, uri):
+		if tracks_type == 'playlist':
+			if self.search_type == 'song':
+				data = []
+				songs = self.doubanfm_cache['song']
+				for song in songs:
+					if song['id'] == uri:
+						data = [song]
+						break
+			else:
+				data = self.doubanfm_cache['songlist']
+			self.playlist_api_cb(data)
+		else:
+			if self.search_type == 'artist':
+				data = self.doubanfm_cache['artist'][self.search_type]
+			else:
+				data = self.doubanfm_cache['channel']
+			self.search_tracks_api_cb(data)
+			
+			
+	def doubanfm_retrive(self, tracks_type, uri):
+		self.cancel_request()
+		self.browser = webdriver.PhantomJS()
+		self.doubanfm_cache = {}
+		if tracks_type == 'playlist':
+			if self.search_type == 'songlist':
+				data = self.doubanfm_get_songlist(uri)
+				self.doubanfm_cache['songlist'] = {}
+				self.doubanfm_cache['songlist'][model.title] = data
+			else:   # search_type is song
+				songs = self.doubanfm_cache['song']
+				for song in songs:
+					if song['id'] == uri:
+						data = [song]
+						break
+
+				self.playlist_api_cb(data)
+		else:
+			# tracks-type 'plain'
+			# for container type: user and group
+			data = self.doubanfm_get_playlist(uri)
+			if self.search_type == 'artist':
+				self.doubanfm_cache['artist'] = {}
+				self.doubanfm_cache['artist'][self.search_type] = data
+			else:
+				self.doubanfm_cache['channel'] = {}
+				self.doubanfm_cache['channel'][self.search_type] = data
+			self.search_tracks_api_cb(data)
+			
+	def doubanfm_cache_exists(self):
+		if self.doubanfm_cache is None:
+			return False
+		return self.doubanfm_cache.get(self.search_type, None) != None
 		
 	# callback function for selection of container_view
 	def selection_changed_cb(self, selection):
 		self.new_model()
-		self.cancel_request()
+		
 		self.build_sc_menu()
 
 		(model, aiter) = selection.get_selected()
 		if aiter is None:
 			return
-
 		[itemtype, uri] = model.get(aiter, 1, 2)
 		if itemtype not in self.container_types:
 			return
 
 		print("loading %s %s" % (itemtype, uri))
-		self.browser = webdriver.PhantomJS()
 		ct = self.container_types[itemtype]
-		if ct['tracks-type'] == 'playlist':
-			if self.search_type == 'songlist':
-				data = self.doubanfm_get_songlist(uri)
-			else:
-				for song in self.doubanfm_songs:
-					if song['id'] == uri:
-						data = [song]
-						break
-			
-			self.playlist_api_cb(data)
+		
+		if self.doubanfm_cache_exists() is True:
+			print('artist exists %s' % self.search_type)
+			print('cache[artist] = ' + str(self.doubanfm_cache['artist']))
+			self.doubanfm_fetch_cache(ct['tracks-type'], uri)
 		else:
-			# for container type: user and group
-			data = self.doubanfm_get_playlist(uri)
-			self.search_tracks_api_cb(data)
+			self.doubanfm_retrive(ct['tracks-type'], uri)
 
 	def sort_order_changed_cb(self, obj, pspec):
 		obj.resort_model()
