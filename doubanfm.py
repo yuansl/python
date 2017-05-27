@@ -138,17 +138,17 @@ class SoundCloudSource(RB.StreamingSource):
 
 		self.container_types = {
 			'user': {
-				'attributes': ['username', 'kind', 'uri', 'permalink_url', 'avatar_url', 'description'],
+				'attributes': ['username', 'kind', 'uri', 'permalink_url', 'avatar_url', 'description', 'cache_entry'],
 				'tracks-url': '/tracks.json',
 				'tracks-type': 'plain',
 			},
 			'playlist': {
-				'attributes': ['title', 'kind', 'uri', 'permalink_url', 'artwork_url', 'description'],
+				'attributes': ['title', 'kind', 'uri', 'permalink_url', 'artwork_url', 'description', 'cache_entry'],
 				'tracks-url': '.json',
 				'tracks-type': 'playlist',
 			},
 			'group': {
-				'attributes': ['name', 'kind', 'uri', 'permalink_url', 'artwork_url', 'description'],
+				'attributes': ['name', 'kind', 'uri', 'permalink_url', 'artwork_url', 'description', 'cache_entry'],
 				'tracks-url': '/tracks.json',
 				'tracks-type': 'plain',
 			},
@@ -214,7 +214,8 @@ class SoundCloudSource(RB.StreamingSource):
 	def search_tracks_api_cb(self, tracks):
 		if tracks is None:
 			return
-
+		if len(tracks) is 0:
+			return
 		shell = self.props.shell
 		db = shell.props.db
 		entry_type = self.props.entry_type
@@ -243,23 +244,13 @@ class SoundCloudSource(RB.StreamingSource):
 			# select, etc. too?
 
 	def playlist_api_cb(self, data):
-		if data is None:
-			return
-
-		shell = self.props.shell
-		db = shell.props.db
-
-		for item in data:
-			self.add_track(db, self.props.entry_type, item)
+		self.search_tracks_api_cb(data)
 
 	def cancel_request(self):
 		if self.browser:
 			self.browser.delete_all_cookies()
 			self.browser.quit()
 			self.browser = None
-		if self.doubanfm_cache:
-			self.doubanfm_cache.clear()
-			self.doubanfm_cache = None
 
 	def search_popup_cb(self, widget):
 		self.search_popup.popup(None, None, None, None, 3, Gtk.get_current_event_time())
@@ -292,7 +283,7 @@ class SoundCloudSource(RB.StreamingSource):
 		query = { 'start':'0', 'limit':'5' }
 		query['q'] = self.search_text
 		url = self.host + search_path + '?' + parse.urlencode(query)
-		data = self.doubanfm_get(url)
+		data = self.doubanfm_get(url, 0)
 		return data
 
 	def do_search(self):
@@ -313,58 +304,59 @@ class SoundCloudSource(RB.StreamingSource):
 		self.browser = webdriver.PhantomJS()
 		search_results = self.doubanfm_search()
 
-		# cache = {
-		# 'song': [],
-		# 'channel': {'channel1':[], 'channel2':[], ... },
-		# 'songlist':{'songlist1':[], 'songlist2':[], ... },
-		# 'artist': {'artist1':[], 'artist2':[], ... }
-		# 'all': search_results
-		# }
 		self.doubanfm_cache = {}
-		
 		self.doubanfm_cache['all'] = search_results
 		self.doubanfm_cache[self.search_type] = None
 		if st['containers']:
 			self.scrolled.show()
-
 			data = []
 			if self.search_type == 'artist':
 				artists = search_results[0]['items']
 				for artist in artists:
 					artist['kind'] = 'user'
-					artist['username'] = artist['name_usual']
 					artist['uri'] = artist['channel']
+					if artist['channel'] == '':
+						continue
+					artist['username'] = artist['name_usual']
 					artist['permalink_url'] = 'https://douban.fm/artist/%s/' % artist['id']
-					print('artist: %s' % str(artist))
+					artist['cache_entry'] = artist['username']+artist['channel']
 					data.append(artist)
 
 			elif self.search_type == 'channel':
 				channels = search_results[2]['items']
 				for channel in channels:
 					channel['kind'] = 'group'
-					channel['name'] = channel['title']
+					channel['name'] = channel['title'] + 'MHZ'
+					if channel['id'] == '':
+						continue
 					channel['uri'] = str(channel['id'])
 					channel['permalink_url'] = 'https://douban.fm'
-					print('channel: %s' % str(channel))
+					channel['cache_entry'] = channel['uri']
 					data.append(channel)
+			elif self.search_type == 'song':
+				songs = search_results[1]['items']
+				self.doubanfm_cache['song'] = {}
+				for song in songs:
+					song['kind'] = 'playlist'
+					song['title'] += ' by ' + song['artist']
+					song['uri'] = song['id']
+					if song['id'] == '':
+						continue
+					song['permalink_url'] = 'https://douban.fm/song/%sg%s/' % (song['sid'], song['ssid'])
+					song['cache_entry'] = song['title']
+					cache_entry = song['cache_entry']
+					self.doubanfm_cache['song'][cache_entry] = [song]
+					data.append(song)
 			else:
-				if self.search_type == 'song':
-					songs = search_results[1]['items']
-					for song in songs:
-						song['kind'] = 'playlist'
-						song['title'] += ' by ' + song['artist']
-						song['uri'] = song['id']
-						song['permalink_url'] = 'https://douban.fm/song/%sg%s/' % (song['sid'], song['ssid'])
-						print('song: %' % str(song))
-						data.append(song)
-				else:
-					songlists = search_results[3]['items']
-					for songlist in songlists:
-						songlist['kind'] = 'playlist'
-						songlist['uri'] = str(songlist['id'])
-						songlist['permalink_url'] = 'https://douban.fm/songlist/%d/' % songlist['id']
-						print('songlist: %s' % str(songlist))
-						data.append(songlist)
+				songlists = search_results[3]['items']
+				for songlist in songlists:
+					songlist['kind'] = 'playlist'
+					if songlist['id'] == '':
+						continue
+					songlist['uri'] = str(songlist['id'])
+					songlist['permalink_url'] = 'https://douban.fm/songlist/%d/' % songlist['id']
+					songlist['cache_entry'] = songlist['uri']
+					data.append(songlist)
 			
 			self.search_containers_api_cb(data)
 		else:
@@ -375,13 +367,14 @@ class SoundCloudSource(RB.StreamingSource):
 				data = self.doubanfm_get_songlist(songlist['id'])
 				for song in data:
 					songs.append(song)
-			print('songs: %s ' % str(songs))
 			self.doubanfm_cache['song'] = songs
 			self.search_tracks_api_cb(songs)
 			
-	def doubanfm_get(self, url):
+	def doubanfm_get(self, url, timeout):
 		self.browser.get(url)
+		time.sleep(timeout)
 		body = self.browser.find_element_by_tag_name('body')
+		print('body=%s' % str(body.text))
 		data = json.loads(body.text)
 		return data
 	
@@ -392,17 +385,16 @@ class SoundCloudSource(RB.StreamingSource):
 		"""
 		artist_path = '/j/v2/artist/%s/' % artist_id
 		url = self.host + artist_id
-		return self.doubanfm_get(url)
+		return self.doubanfm_get(url, 0)
 
 	# search MHZ
 	def doubanfm_get_channel_info(self, channel_id):
 		channel_path = '/j/v2/channel_info'
 		query = 'id=%s' % channel_id
 		url = self.host + channel_path + '?' + query
-		channel_info = self.doubanfm_get(url)
+		channel_info = self.doubanfm_get(url, 0)
 		if channel_info is None:
 			return 0
-		print('channel_info: ', str(channel_info))
 		data = channel_info['data']
 		channels = data['channels']
 		song_num = channels[0].get('song_num', 0)
@@ -413,16 +405,16 @@ class SoundCloudSource(RB.StreamingSource):
 		data = {
 			'channel': channel_id,
 			'kbps': '192',
-			'client': 's:mainsite|y:3.0',
 			'app_name': 'radio_website',
 			'version': '100',
-			'type': 'n'
+			'type': 'n',
+			'client' : 's:mainsite|y:3.0'
 		}
 		playlist_path = '/j/v2/playlist'
 		query = parse.urlencode(data)
 		url = self.host + playlist_path + '?' + query
 		print('url: ' + url)
-		song_info = self.doubanfm_get(url)
+		song_info = self.doubanfm_get(url, 2)
 		if song_info is None:
 			return None
 		return song_info.get('song', None)
@@ -434,80 +426,57 @@ class SoundCloudSource(RB.StreamingSource):
 		songlist_path = '/j/v2/songlist/%s/' % id
 		query = 'kbps=192'
 		url = self.host + songlist_path + '?' + query
-		songlist = self.doubanfm_get(url)
+		songlist = self.doubanfm_get(url, 0)
 		if songlist is None:
 			return None
 		return songlist.get('songs', None)
 	
 	def doubanfm_fetch_cache(self, model, aiter):
-		[cache_key, kind] = model.get(aiter, 0, 1)
+		[kind, cache_entry] = model.get(aiter, 1, 6)
+		data = self.doubanfm_cache[self.search_type][cache_entry]
 		ct = self.container_types[kind]
-		tracks_type = ct['tracks-type']
+		tracks_type = ct['tracks-type']		
 		if tracks_type == 'playolist':
-			if self.search_type == 'song':
-				data = []
-				songs = self.doubanfm_cache['song']
-				for song in songs:
-					if song['id'] == uri:
-						data = [song]
-						break
-			else:
-
-				data = self.doubanfm_cache['songlist'].get(cache_key, None)
 			self.playlist_api_cb(data)
-		else:
-			if self.search_type == 'artist':
-				if self.doubanfm_cache.get('artist') is not None:
-					data = self.doubanfm_cache['artist'].get(cache_key, None)
-				else:
-					data = None
-			else:
-				if self.doubanfm_cache.get('channel') is not None:
-					data = self.doubanfm_cache['channel'].get(cache_key, None)
-				else:
-					data = None
+		else: # tracks_type is 'plain'
 			self.search_tracks_api_cb(data)
 			
 	def doubanfm_retrive(self, model, aiter):
+		"""Get song info from douban.fm, then cache the info"""
 		self.cancel_request()
 		self.browser = webdriver.PhantomJS()
-		self.doubanfm_cache = {}
-		self.doubanfm_cache[self.search_type] = None
-		[title, kind, uri] = model.get(aiter, 0, 1, 2)
+
+		[kind, uri, cache_entry] = model.get(aiter, 1, 2, 6)
+		if self.doubanfm_cache.get(self.search_type, None) is None:
+			self.doubanfm_cache[self.search_type] = {}
+			
 		ct = self.container_types[kind]
 		tracks_type = ct['tracks-type']
 		if tracks_type == 'playlist':
+			data = None
 			if self.search_type == 'songlist':
-				self.doubanfm_cache['songlist'] = {}
 				data = self.doubanfm_get_songlist(uri)
-				self.doubanfm_cache['songlist'][title] = data
-			else:   # search_type is song
-				songs = self.doubanfm_cache['all'][1]
-				for song in songs:
-					if song['id'] == uri:
-						data = [song]
-						break
+				if isinstance(data, dict):
+					data = [data]
 
 			self.playlist_api_cb(data)
 		else:
 			# tracks-type 'plain'
 			# for container type: user and group
 			data = self.doubanfm_get_playlist(uri)
-			if self.search_type == 'artist':
-				self.doubanfm_cache['artist'] = {}
-				self.doubanfm_cache['artist'][self.search_type] = data
-			else:
-				self.doubanfm_cache['channel'] = {}
-				self.doubanfm_cache['channel'][self.search_type] = data
 			self.search_tracks_api_cb(data)
+		self.doubanfm_cache[self.search_type][cache_entry] = data
 			
-	def doubanfm_cache_exists(self):
+	def doubanfm_cache_exists(self, cache_entry):
 		if self.doubanfm_cache is None:
 			return False
-		return self.doubanfm_cache[self.search_type] != None
+		if self.doubanfm_cache.get(self.search_type, None) is None:
+			return False
+
+		return self.doubanfm_cache[self.search_type].get(cache_entry, None) != None
 		
-	# callback function for selection of container_view
 	def selection_changed_cb(self, selection):
+		"""Callback function for selection of container_view"""
 		self.new_model()
 		self.build_sc_menu()
 		
@@ -515,14 +484,12 @@ class SoundCloudSource(RB.StreamingSource):
 		if aiter is None:
 			return
 		
-		[itemtype, uri] = model.get(aiter, 1, 2)
+		[itemtype, uri, cache_entry] = model.get(aiter, 1, 2, 6)
 		if itemtype not in self.container_types:
 			return
 
-		print("loading %s %s" % (itemtype, uri))
-		#ct = self.container_types[itemtype]
-		
-		if self.doubanfm_cache_exists():
+		print("loading %s %s cache_entry %s" % (itemtype, uri, cache_entry))
+		if self.doubanfm_cache_exists(cache_entry):
 			self.doubanfm_fetch_cache(model, aiter)
 		else:
 			self.doubanfm_retrive(model, aiter)
@@ -556,7 +523,7 @@ class SoundCloudSource(RB.StreamingSource):
 		Gtk.show_uri(screen, uri, Gdk.CURRENT_TIME)
 
 	def build_sc_menu(self):
-		"""Create a Menu on self.sc_button"""
+		"""Create a Menu on self.sc_button: Powered by: SOUNDCLOUD"""
 		menu = {}
 
 		# playing track
