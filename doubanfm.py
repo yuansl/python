@@ -174,6 +174,7 @@ class SoundCloudSource(RB.StreamingSource):
 		self.songs.set_model(model)
 
 	def add_track(self, db, entry_type, item):
+		"""Item should be a song-dict type with attrs ``[]``"""
 		location = item['url']
 		entry = db.entry_lookup_by_location(location)
 		if entry:
