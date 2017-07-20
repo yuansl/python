@@ -2,7 +2,7 @@ CC=gcc
 
 CFLAGS= -g -Wall
 AR = ar
-ARFLAGS = rv
+ARFLAGS = rvs
 RANLIB = ranlib
 RM=rm -f
 
@@ -13,7 +13,6 @@ all: $(ARCHIVE)
 
 $(ARCHIVE): comm_util.o
 	$(AR) $(ARFLAGS) $@ comm_util.o
-	$(RANLIB) $@
 
 .PHONY: clean
 clean:
