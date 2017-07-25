@@ -42,6 +42,11 @@ static const char symbol_map[128] = {
 	[';'] = 1, ['.'] = 1, ['\\'] = 1
 };
 
+static const char lookahead_symbol[128] = {
+	['+'] = 1, ['-'] = 1, ['!'] = 1, ['*'] = 1, ['/'] = 1, ['%'] = 1,
+	['&'] = 1, ['|'] = 1, ['^'] = 1, ['<'] = 1, ['>'] = 1, ['='] = 1
+};
+
 static const char *token_type_desc[] = {
 	[SYMBOL] = "SYMBOL",
 	[KEYWORD] = "KEYWORD",
@@ -60,6 +65,13 @@ bool issymbol(int c)
 	if (c <= 0 || c >= 128)
 		return false;
 	return symbol_map[c];
+}
+
+bool lookahead(int c)
+{
+	if (c <= 0 || c >= 128)
+		return false;
+	return lookahead_symbol[c];
 }
 
 bool isident(int c)
@@ -226,7 +238,7 @@ struct token *generate_tokens(const char *filename)
 	if (fp == NULL)
 		err_sys("fopen(%s, r) error", filename);
 	
-	preg = reg_compile("[[:alpha:]_][[:alnum:]_]*[ \\t]*\\(?");
+	preg = reg_compile("[[:alpha:]_][[:alnum:]_]*([ \\t]*\\()?");
 	if (preg == NULL) {
 		fclose(fp);
 		err_sys("reg_compile error");
@@ -265,17 +277,67 @@ struct token *generate_token(const char *token_name, struct token *list_head)
 	return list_head;
 }
 
+const char *recognize_character(char *token_name, int *offset, const char *string, const char *line)
+{
+	const char *p = string;
+	int i = *offset;
+	
+	if (*p == '\\') {
+		token_name[i++] = '\\';
+		p++;
+		if (*p == 'x') {
+			/* for hexdecimal */
+			token_name[i++] = *p++;
+			int xdigit_cnt = 2;
+			while (isdigit(*p) && xdigit_cnt > 0) {
+
+				token_name[i++] = *p++;
+				xdigit_cnt--;
+			}
+			if (xdigit_cnt > 0)
+				err_msg(0, "syntax on `%s`", line);
+		} else if (isdigit(*p)) {
+			/* for octal */
+			int oct_cnt = 3;
+			while (isdigit(*p) && oct_cnt > 0) {
+				token_name[i++] = *p++;
+				oct_cnt--;
+			}
+							
+		} else {
+			token_name[i++] = *p++;
+		}
+						
+		if (*p != '\'') {
+			err_msg(0, "syntax on `%s`", p);
+		} else {
+			token_name[i++] = *p++;
+		}
+					
+	} else {
+		for (; *p && *p != '\''; i++, p++)
+			token_name[i] = *p;
+		if (*p != '\'') {
+			err_msg(0, "syntax on `%s`", p);
+		} else {
+			token_name[i++] = *p++;
+		}
+	}
+	*offset = i;
+	return p;
+}
+
 struct token *recognize_token(const char *line, struct token *list_head)
 {
 	int c;
 	int i;
 	char token_name[MAX_NAME] = {0};
 	const char *p = skip_spaces(line);
-	struct token *tail = list_head;
+	struct token *tail;
 	struct token *token = NULL;
 	enum token_type type;
 	if (p == NULL)
-		return NULL;
+		return list_head;
 
 	if (status == INCOMMENT) {
 		while (*p) {
@@ -287,27 +349,25 @@ struct token *recognize_token(const char *line, struct token *list_head)
 			p++;
 		}
 	}
-
+	tail = list_head;
 	while (tail && tail->next != NULL)
 		tail = tail->next;
 	
 	while (*p) {
 		c = *p++;
-		if (isalpha(c) || c == '_') {
+		if (isalpha(c) || c == '_') { /* for identifiers */
 			type = IDENTIFIER;
 			token_name[0] = c;
 			for (i = 1; *p && isident(*p); i++, p++)
 				token_name[i] = *p;
 			token_name[i] = '\0';
-
-		} else if (isdigit(c)) {
-			type = NUMBER;			
+		} else if (isdigit(c)) { /* for numbers */
+			type = NUMBER;
 			token_name[0] = c;
 			for (i = 1; *p && isdigit(*p); i++, p++)
 				token_name[i] = *p;
 			token_name[i] = '\0';
-
-		} else if (issymbol(c)) {
+		} else if (issymbol(c)) { /* for terminal symbols in c */
 			i = 0;
 			token_name[i++] = c;
 			type = SYMBOL;
@@ -316,57 +376,21 @@ struct token *recognize_token(const char *line, struct token *list_head)
 			 * `%=`, `<=`, `>=`, `|=`, `&=`, `^=`,
 			 * `\'`, '\''
 			 */
-
-			if (c == '\"') {
+			if (c == '\"') { /* for c-string */
 				type = STRING;
 				for (; *p && *p != '\"'; i++, p++)
 					token_name[i] = *p;
 				if (*p != '\"')
 					err_msg(0, "syntax on `%s`", line);
 				token_name[i++] = *p++;
-			} else if (c == '\'') {
+			} else if (c == '\'') { /* for c character e.g. 'a' */
 				/* '\x00', '\377' */
 				// for '\x00', '\ooo', '\t', '\'', '\"', 'a'...
-				if (*p == '\\') {
-					token_name[i++] = '\\';
-					p++;
-					if (*p == 'x') {
-						token_name[i++] = *p++;
-						int xdigit_cnt = 2;
-						while (isdigit(*p) && xdigit_cnt > 0) {
-
-							token_name[i++] = *p++;
-							xdigit_cnt--;
-						}
-						if (xdigit_cnt > 0)
-							err_msg(0, "syntax on `%s`", line);
-					} else if (isdigit(*p)) {
-						int oct_cnt = 3;
-						while (isdigit(*p) && oct_cnt > 0) {
-							token_name[i++] = *p++;
-							oct_cnt--;
-						}
-							
-					} else {
-						token_name[i++] = *p++;
-					}
-						
-					if (*p != '\'') {
-						err_msg(0, "syntax on `%s`", p);
-					} else {
-						token_name[i++] = *p++;
-					}
-				} else {
-					for (; *p && *p != '\''; i++, p++)
-						token_name[i] = *p;
-					if (*p != '\'') {
-						err_msg(0, "syntax on `%s`", p);
-					} else {
-						token_name[i++] = *p++;
-					}
-				}
+				type = CHARACTER;
+				p = recognize_character(token_name, &i, p, line);
 			} else {
-				if (issymbol(*p)) {
+				if (lookahead(c)) {
+					/* lookahead */
 					if (c == '+') {
 						switch (*p) {
 						case '+':
@@ -390,27 +414,19 @@ struct token *recognize_token(const char *line, struct token *list_head)
 							err_msg(0, "Unknown token %c%c", c, *p);
 							break;
 						}
-					} else if (c == '*' ||
-						   c == '/' ||
-						   c == '%' ||
-						   c == '&' ||
-						   c == '|' ||
-						   c == '^' ||
-						   c == '<' ||
-						   c == '>' ||
-						   c == '=' ||
-						   c == '!') {
+					} else  {
 						token_name[i++] = *p++;
 					}
 				}
 			}
-		} else {
+		} else {	/* skip newline/space/ etc */
 			continue;
 		}
 		token_name[i] = '\0';
+		printf("TOKEN: %s\n", token_name);
 		if (token && token->attr.type == IDENTIFIER && token_name[0] == '(') {
 			token->attr.type = FUNCTION;
-			token = NULL;
+			token = NULL; /* last token should be deleted */
 		}
 		
 		token_entry++;
@@ -457,8 +473,7 @@ int main(int argc, char **argv)
 
 	for (optind = 1; optind < argc; optind++) {
 		filename = remove_comments(argv[optind]);	
-		struct token *list_head = match_tokens(filename);
-		print_token_list(list_head);
+		match_tokens(filename);
 	}
 	return 0;
 }
