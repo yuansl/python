@@ -18,28 +18,26 @@ extern int yyerror(const char *s);
 %left MUL DIV
 	 
 %%
-start: stmt EOLN
+start: stmt EOLN { printf("%f\n", $$); $$=0; }
        ;
 
-stmt: expr
-      | term
+stmt: /* Empty */
+      | expr
       ;
 
- expr: mul_expr
-       | add_expr
+expr:  mul_expr 
+       | add_expr 
        ;
 
- mul_expr: mul_expr MUL term
-           { $$ = $1 * $3; }
-	  | mul_expr DIV term
-           { $$ = $1 / $3; }
-	  | term
-	  ;
+ mul_expr: mul_expr MUL term           { $$ = $1 * $3; }
+	   | mul_expr DIV term         { $$ = $1 / $3; }
+	   | term
+	   ;
 
- add_expr: expr PLUS expr
-	 | expr MINUS expr
-	 ;
- term: NUMBER {$$=$1;}
+ add_expr: expr PLUS expr           {$$ = $1 + $3; }
+	   |expr MINUS expr	    {$$ = $1 - $3; }
+	   ;
+term: NUMBER {$$=$1;}
        ;
 %%
 	 

@@ -10,10 +10,12 @@
 #include <regex.h>
 #include <unistd.h>
 #include <errno.h>
-
+#include <libgen.h>
+#include <assert.h>
 #define MAX_LINE 4096
 #define MAX_NAME 256
 #define MAX_REGMATCH 2
+#define MAX_PARAM 32
 
 #define err_sys(fmt, ...)						\
 	do {								\

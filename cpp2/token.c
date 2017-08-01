@@ -1,5 +1,9 @@
 #include "token.h"
 
+#include "preprocessor.h"
+
+int token_entry = 0;
+
 static const char *keywords[] = {
 	"bool",
 	"if",
@@ -58,8 +62,6 @@ static const char *token_type_desc[] = {
 	NULL
 };
 
-int token_entry = 0;
-
 bool issymbol(int c)
 {
 	if (c <= 0 || c >= 128)
@@ -92,66 +94,6 @@ bool iskeyword(const char *token)
 	return false;
 }
 
-void match_comment(const char *src, FILE *writeto)
-{
-	const char *p = src;
-
-	while (*p) {
-		if (status == INCOMMENT) {
-			if (p[0] == '*' && p[1] == '/') {
-				p += 2;
-				status = OUTCOMMENT;
-				continue;
-			}
-			p++;
-			continue;
-		}
-		
-		if (p[0] == '/') {
-			if (p[1] == '/') {
-				/* ignore whole line after the '//' */
-				fputc('\n', writeto);
-				return;
-			}
-			
-			if (p[1] == '*') {
-				status = INCOMMENT;
-				p += 2;
-				continue;
-			}
-		}
-		
-		fputc(*p, writeto);
-		p++;
-	}
-	
-}
-
-char *remove_comments(const char *filename)
-{
-	static char fileout[MAX_NAME];
-	char linebuf[MAX_LINE];
-	FILE *fp;
-	FILE *fout;
-
-	fp = fopen(filename, "r");
-	if (fp == NULL)
-		err_sys("fopen(%s, 'r') error", filename);
-
-	strcpy(fileout, "/tmp/");
-	strcat(fileout, filename);
-
-	fout = fopen(fileout, "w");
-	if (fout == NULL)
-		err_sys("fopen(%s, 'w') error", fileout);
-
-	while (fgets(linebuf, sizeof(linebuf), fp) != NULL) {
-		match_comment(linebuf, fout);
-	}
-	fclose(fp);
-	fclose(fout);
-	return fileout;
-}
 
 struct token *find_token_definition(struct token *list_head, const char *token_name)
 {
@@ -164,32 +106,14 @@ struct token *find_token_definition(struct token *list_head, const char *token_n
 	return NULL;
 }
 
-struct token *create_token(const char *token_name)
+struct token *create_token(const char *token_name, enum token_type type)
 {
 	struct token *tk = calloc(1, sizeof(*tk));
 	if (tk == NULL)
 		return tk;
 	
 	strcpy(tk->token_name, token_name);
-	tk->attr.type = IDENTIFIER;
-	tk->attr.entry = token_entry;
-	strcpy(tk->alias_name, token_name);
-	if (token_name[strlen(token_name)-1] == '(') {
-		tk->alias_name[strlen(token_name) - 1] = '\0';
-		if (!strequal(tk->alias_name, "sizeof"))
-			tk->attr.type = FUNCTION;
-	}
 
-	return tk;
-}
-
-struct token *create_token2(const char *token_name, enum token_type type)
-{
-	struct token *tk = calloc(1, sizeof(*tk));
-	if (tk == NULL)
-		return tk;
-	
-	strcpy(tk->token_name, token_name);
 	tk->attr.type = type;
 	tk->attr.entry = token_entry;
 	strcpy(tk->alias_name, token_name);
@@ -199,82 +123,13 @@ struct token *create_token2(const char *token_name, enum token_type type)
 	return tk;
 }
 
-struct token *match_token(regex_t *preg, const char *line, struct token *list_head)
-{
-	char token_name[MAX_NAME];
-	regmatch_t pmatch[MAX_REGMATCH];
-	const char *s = line;
-	struct token *token;
-	while (regexec(preg, s, MAX_REGMATCH, pmatch, 0) == 0) {
-		strcut(token_name, s, pmatch[0].rm_so, pmatch[0].rm_eo);
-
-		printf("Token: `%s`\n", token_name);
-		token = find_token_definition(list_head, token_name);
-		if (token == NULL) {
-			token = create_token(token_name);
-			if (token == NULL)
-				err_sys("create_token");
-			
-			if (list_head == NULL) {
-				list_head = token;
-			} else {
-				token->next = list_head->next;
-				list_head->next = token;
-			}
-		}
-		s += pmatch[0].rm_eo;
-	}
-	return list_head;
-}
-
-struct token *generate_tokens(const char *filename)
-{
-	struct token *token_list_head = NULL;
-	FILE *fp;
-	char linebuf[MAX_LINE];
-	regex_t *preg;
-	
-	fp = fopen(filename, "r");
-	if (fp == NULL)
-		err_sys("fopen(%s, r) error", filename);
-	
-	preg = reg_compile("[[:alpha:]_][[:alnum:]_]*([ \\t]*\\()?");
-	if (preg == NULL) {
-		fclose(fp);
-		err_sys("reg_compile error");
-	}
-	
-	while (fgets(linebuf, sizeof(linebuf), fp) != NULL)
-		token_list_head = match_token(preg, linebuf, token_list_head);
-	
-	fclose(fp);
-	regfree(preg);
-	free(preg);
-	return token_list_head;
-}
-
 void print_token_list(struct token *list_head)
 {
 	struct token *cur = list_head;
 	while (cur != NULL) {
-		printf("%s ",
-		       cur->alias_name);
+		printf("ToKEN: %s\n", cur->token_name);
 		cur = cur->next;
 	}
-}
-
-struct token *generate_token(const char *token_name, struct token *list_head)
-{
-	struct token *token = create_token(token_name);
-	if (token == NULL)
-		err_sys("create_token error");
-	if (list_head == NULL) {
-		list_head = token;
-	} else {
-		token->next = list_head->next;
-		list_head->next = token;
-	}
-	return list_head;
 }
 
 const char *recognize_character(char *token_name, int *offset, const char *string, const char *line)
@@ -282,6 +137,8 @@ const char *recognize_character(char *token_name, int *offset, const char *strin
 	const char *p = string;
 	int i = *offset;
 	
+	/* for CHARACTER: '\x00', '\377' */
+	// and '\x00', '\ooo', '\t', '\'', '\"', 'a'...
 	if (*p == '\\') {
 		token_name[i++] = '\\';
 		p++;
@@ -289,13 +146,10 @@ const char *recognize_character(char *token_name, int *offset, const char *strin
 			/* for hexdecimal */
 			token_name[i++] = *p++;
 			int xdigit_cnt = 2;
-			while (isdigit(*p) && xdigit_cnt > 0) {
-
+			while (isxdigit(*p) && xdigit_cnt > 0) {
 				token_name[i++] = *p++;
 				xdigit_cnt--;
 			}
-			if (xdigit_cnt > 0)
-				err_msg(0, "syntax on `%s`", line);
 		} else if (isdigit(*p)) {
 			/* for octal */
 			int oct_cnt = 3;
@@ -303,95 +157,125 @@ const char *recognize_character(char *token_name, int *offset, const char *strin
 				token_name[i++] = *p++;
 				oct_cnt--;
 			}
-							
 		} else {
 			token_name[i++] = *p++;
 		}
-						
-		if (*p != '\'') {
-			err_msg(0, "syntax on `%s`", p);
-		} else {
-			token_name[i++] = *p++;
-		}
-					
 	} else {
-		for (; *p && *p != '\''; i++, p++)
-			token_name[i] = *p;
-		if (*p != '\'') {
-			err_msg(0, "syntax on `%s`", p);
-		} else {
-			token_name[i++] = *p++;
-		}
+		token_name[i++] = *p++;
 	}
+	if (*p != '\'') {
+		err_msg(0, "CHARACTER syntax error on `%s`", string);
+		return NULL;
+	}
+	token_name[i++] = *p++;
 	*offset = i;
 	return p;
 }
 
-struct token *recognize_token(const char *line, struct token *list_head)
+struct token *recognize_token(const char *filename, const char *line, struct token *list_head)
 {
 	int c;
 	int i;
 	char token_name[MAX_NAME] = {0};
-	const char *p = skip_spaces(line);
 	struct token *tail;
 	struct token *token = NULL;
 	enum token_type type;
+	const char *p = skip_spaces(line);
 	if (p == NULL)
 		return list_head;
 
-	if (status == INCOMMENT) {
-		while (*p) {
-			if (p[0] == '*' && p[1] == '/') {
-				p += 2;
-				status = OUTCOMMENT;
-				break;
-			}
-			p++;
-		}
-	}
 	tail = list_head;
 	while (tail && tail->next != NULL)
 		tail = tail->next;
+
+	if (status == PARTSTRING) {
+		assert(tail != NULL);
+		i = strlen(tail->token_name);
+		for (; *p && *p != '\"'; i++, p++) {
+			if (p[0] == '\\' && isspace(p[1])) {
+				tail->token_name[i] = '\0';
+				return list_head;
+			}
+			tail->token_name[i] = *p;
+		}
+		if (*p == '\"') {
+			status = NORMAL;
+			tail->token_name[i++] = '\"';
+			tail->token_name[i] = '\0';
+			p++;
+		} else {
+			err_msg(1, "Unexpected EOL on  %s:`%s`", filename, line);
+		}
+	}
 	
 	while (*p) {
 		c = *p++;
+		i = 0;		
 		if (isalpha(c) || c == '_') { /* for identifiers */
 			type = IDENTIFIER;
-			token_name[0] = c;
-			for (i = 1; *p && isident(*p); i++, p++)
+			token_name[i++] = c;
+			for (; *p && isident(*p); i++, p++)
 				token_name[i] = *p;
-			token_name[i] = '\0';
+
 		} else if (isdigit(c)) { /* for numbers */
 			type = NUMBER;
-			token_name[0] = c;
-			for (i = 1; *p && isdigit(*p); i++, p++)
-				token_name[i] = *p;
-			token_name[i] = '\0';
-		} else if (issymbol(c)) { /* for terminal symbols in c */
-			i = 0;
 			token_name[i++] = c;
-			type = SYMBOL;
+			if (!isdigit(*p) && *p == 'x')
+				token_name[i++] = *p++;
+			
+			for (; *p && isxdigit(*p); i++, p++)
+				token_name[i] = *p;
+
+		} else if (issymbol(c)) {
+			/* for terminal symbols in c */
+			type = SYMBOL;			
+			token_name[i++] = c;
 			/*
 			 * `++`, `--`, `->`, `+=`, `-=`, `*=`, `/=`,
 			 * `%=`, `<=`, `>=`, `|=`, `&=`, `^=`,
 			 * `\'`, '\''
 			 */
-			if (c == '\"') { /* for c-string */
+			if (c == '"' && *p != '\'') { /* for c-string */
 				type = STRING;
-				for (; *p && *p != '\"'; i++, p++)
+			until_string_end:
+				for (; *p && *p != '"'; i++, p++) {
+					if (p[0] == '\\' && isspace(p[1])) {
+						status = PARTSTRING;
+						break;
+					}
 					token_name[i] = *p;
-				if (*p != '\"')
-					err_msg(0, "syntax on `%s`", line);
-				token_name[i++] = *p++;
-			} else if (c == '\'') { /* for c character e.g. 'a' */
-				/* '\x00', '\377' */
-				// for '\x00', '\ooo', '\t', '\'', '\"', 'a'...
+				}
+				if (*p == '"') {
+					if (p[-1] == '\\' && p[-2] != '\\') {
+						token_name[i++] = *p++;
+						goto until_string_end;
+					}
+					token_name[i++] = *p++;
+				} else if (*p == '\\') {
+					/* PARTSTRING */
+					token_name[i] = '\0';
+					token = create_token(token_name, type);
+					if (tail == NULL) {
+						list_head = token;
+					} else {
+						token->next = tail->next;
+						tail->next = token;
+					}
+					return list_head;
+				}
+			} else if (c == '\'') {
+				/* for c character e.g. 'a' */
 				type = CHARACTER;
 				p = recognize_character(token_name, &i, p, line);
+				if (p == NULL) {
+					err_msg(0, "At %s:`%s`", filename, line);
+					return list_head;
+				}
 			} else {
 				if (lookahead(c)) {
 					/* lookahead */
-					if (c == '+') {
+					switch (c) {
+					case '+':
 						switch (*p) {
 						case '+':
 						case '=':
@@ -399,10 +283,15 @@ struct token *recognize_token(const char *line, struct token *list_head)
 							token_name[i] = '\0';
 							break;
 						default:
-							err_msg(0, "Unknown token: %c%c", c, *p);
+							if (isdigit(*p)) {
+								type = NUMBER;
+								for (; *p && isdigit(*p); i++, p++)
+									token_name[i] = *p;
+							}
 							break;
 						}
-					} else if (c == '-') {
+						break;
+					case '-':
 						switch (*p) {
 						case '-':
 						case '>':
@@ -411,11 +300,60 @@ struct token *recognize_token(const char *line, struct token *list_head)
 							token_name[i] = '\0';
 							break;
 						default:
-							err_msg(0, "Unknown token %c%c", c, *p);
+							if (isdigit(*p)) {
+								type = NUMBER;
+								for (; *p && isdigit(*p); i++, p++)
+									token_name[i] = *p;
+							}
 							break;
 						}
-					} else  {
-						token_name[i++] = *p++;
+						break;
+					case '&':
+						switch (*p) {
+						case '&':
+						case '=':
+							token_name[i++] = *p++;
+							break;
+						default:
+							break;
+						}
+						break;
+					case '|':
+						switch (*p) {
+						case '|':
+						case '=':
+							token_name[i++] = *p++;
+							break;
+						default:
+							break;
+						}
+					case '<':
+						switch (*p) {
+						case '<':
+						case '=':
+							token_name[i++] = *p++;
+							break;
+						}
+						break;				
+					case '>':
+						switch (*p) {
+						case '>':
+						case '=':
+							token_name[i++] = *p++;
+							break;
+						}
+						break;
+					case '!':
+					case '/':
+					case '*':
+					case '%':
+					case '^':
+					case '=':
+						if (*p == '=')
+							token_name[i++] = *p++;
+						break;
+					default:
+						break;
 					}
 				}
 			}
@@ -423,14 +361,13 @@ struct token *recognize_token(const char *line, struct token *list_head)
 			continue;
 		}
 		token_name[i] = '\0';
-		printf("TOKEN: %s\n", token_name);
 		if (token && token->attr.type == IDENTIFIER && token_name[0] == '(') {
 			token->attr.type = FUNCTION;
 			token = NULL; /* last token should be deleted */
 		}
 		
 		token_entry++;
-		token = create_token2(token_name, type);
+		token = create_token(token_name, type);
 		if (token == NULL)
 			err_sys("create_token error");
 
@@ -456,24 +393,11 @@ struct token *match_tokens(const char *filename)
 	fp = fopen(filename, "r");
 	if (fp == NULL)
 		err_sys("fopen(%s, r) error", filename);
-	
+
 	while (fgets(linebuf, sizeof(linebuf), fp) != NULL)
-		token_list_head = recognize_token(linebuf, token_list_head);
+		token_list_head = recognize_token(filename, linebuf, token_list_head);
 	
 	fclose(fp);
 	
 	return token_list_head;
-}
-
-int main(int argc, char **argv)
-{
-	char *filename;
-	if (argc < 2)
-		err_msg(1, "Usage: %s filename...", argv[0]);
-
-	for (optind = 1; optind < argc; optind++) {
-		filename = remove_comments(argv[optind]);	
-		match_tokens(filename);
-	}
-	return 0;
 }

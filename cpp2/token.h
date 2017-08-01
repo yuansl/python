@@ -8,9 +8,9 @@ enum token_type {
 	KEYWORD,
 	IDENTIFIER,
 	FUNCTION,
+	DIRECTIVE,
 	NUMBER,
 	STRING,
-	COMMENT,
 	CHARACTER
 };
 
@@ -21,18 +21,12 @@ struct token {
 		enum token_type type;
 		int entry;
 	} attr;
-
 	struct token *next;
 };
 
-enum {
-	OUTCOMMENT,
-	INCOMMENT
-} status;
-
 struct token *find_token_definition(struct token *list_head, const char *token_name);
-struct token *create_token(const char *token_name);
-struct token *match_token(regex_t *preg, const char *line, struct token *list_head);
-struct token *generate_tokens(const char *filename);
-
+struct token *create_token(const char *token_name, enum token_type type);
+struct token *match_tokens(const char *filename);
+void print_token_list(struct token *list_head);
+struct token *recognize_token(const char *filename, const char *line, struct token *list_head);
 #endif
