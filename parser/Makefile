@@ -2,22 +2,22 @@ CC=gcc
 CFLAGS = -g -Wall
 
 LEX = flex
-YASS = yacc
-YFLAGS = -d
+YACC = bison
+YFLAGS = -d -l
 LDLIBS = -lfl -lm
 LDFLAGS = -L.
 
-OBJS = calc.c  y.tab.o y.tab.c 
+OBJS = calc.c  calc-grammar.tab.o calc-grammar.tab.c  main.o
 
 all: calc
 
-calc: calc-lex.o y.tab.o
-	$(CC) $(CFLAGS) -o $@ calc-lex.o y.tab.o $(LDLIBS)
+calc: calc-lex.o calc-grammar.tab.o main.o
+	$(CC) $(CFLAGS) -o $@ main.o calc-lex.o calc-grammar.tab.o $(LDLIBS)
 
-calc-lex.c: y.tab.h calc-lex.l
+calc-lex.c: calc-grammar.tab.h calc-lex.l
 	$(LEX) -o $@ calc-lex.l
 
-y.tab.c y.tab.h: calc-grammar.y
+calc-grammar.tab.c calc-grammar.tab.h: calc-grammar.y
 	$(YACC) $(YFLAGS) calc-grammar.y
 
 .PHONY: clean

@@ -2,8 +2,7 @@
 #ifndef YYSTYPE
 #define YYSTYPE double
 #endif
-#include "y.tab.h"
-#include <math.h>
+#include "calc-grammar.tab.h"
 extern YYSTYPE yylval;
 %}
 D [0-9.]
@@ -18,4 +17,6 @@ D [0-9.]
 "!!"  return NOT;
 "||"  return OR;
 "\n"  return EOLN;
+"("   return LPAREN;
+")"   return RPAREN;
 %%
