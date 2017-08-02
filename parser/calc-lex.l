@@ -14,9 +14,19 @@ D [0-9.]
 "*"   return MUL;
 "/"   return DIV;
 "%"   return MOD;
-"!!"  return NOT;
+"&&"  return AND;
 "||"  return OR;
 "\n"  return EOLN;
 "("   return LPAREN;
 ")"   return RPAREN;
+"log2" return LOG2;
+"sin" return SIN;
+"<"   return LT;
+"<="  return LE;
+">"   return GT;
+">="  return GE;
+"!"   return NOT;
+"if"  return IF;
+"then" return THEN;
+
 %%
