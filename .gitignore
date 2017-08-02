@@ -5,4 +5,7 @@
 *.html
 *.txt
 *.css
+a.out
+TAGS
+tags
 __pycache__
