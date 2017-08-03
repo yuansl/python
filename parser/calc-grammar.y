@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
-#include <ctype.h>
 
 #ifndef YYSTYPE
 #define YYSTYPE double
@@ -11,7 +10,7 @@ extern int yylex();
 extern int yyerror(const char *s);
 %}
 
-%token NUMBER  EOLN SEMICOLON SPACE LOG2 SIN IF THEN AND
+%token NUMBER  EOLN SEMICOLON SPACE LOG2 SIN IF THEN AND WHILE DO DONE IDENT ASSIGN 
 %left OR
 %left AND
 %left LT LE GT GE EQ
@@ -21,13 +20,15 @@ extern int yyerror(const char *s);
 %left NOT
 %left LPAREN RPAREN
 %%
+
 Grammar: stmt EOLN                { printf("%f\n", $$); exit(0); }
        ;
 
 stmt: /* Empty */
       | expr
-      | stmt SEMICOLON stmt       { $$ = $3; }
       | if_stmt
+      | while_stmt;
+      | assign_stmt;
       ;
 
 expr:  LPAREN expr RPAREN { $$=$2; }
@@ -41,7 +42,13 @@ expr:  LPAREN expr RPAREN { $$=$2; }
 if_stmt: IF cond_expr THEN stmt
        ;
 
-mul_expr:  expr MUL expr            { $$ = $1 * $3; }
+while_stmt: WHILE  expr  SEMICOLON DO stmt DONE
+            { if ($2) $$=$5; }
+            ; 
+
+assign_stmt: IDENT ASSIGN expr { $$=$1=$3; }
+             ;
+mul_expr:  expr MUL expr           { $$ = $1 * $3; }
 	   | expr DIV expr         { $$ = $1 / $3; }
            | expr MOD expr         { $$ = (int)$1 % (int)$3; }
 	   | term

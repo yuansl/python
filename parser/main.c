@@ -2,13 +2,9 @@
 #include <ctype.h>
 #include <string.h>
 
-#ifndef YYSTYPE
-#define YYSTYPE double
-#endif
-
 char format[20];
 char *programe;
-YYSTYPE yylval;
+
 extern void warning(const char *s, char *t);
 int yyparse (void);
 

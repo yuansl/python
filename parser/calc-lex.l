@@ -30,4 +30,11 @@ D [0-9.]
 "if"  return IF;
 "then" return THEN;
 ";"    return SEMICOLON;
+"while" return WHILE;
+"do"  return DO;
+"done" return DONE;
+"="    return ASSIGN;
+"[a-zA-Z_][a-zA-Z0-9_]+"  printf("IDENT `%s`", yytext); return IDENT;
+"[a-z]+" printf("THIS IDENT `%s`", yytext); return IDENT;
+
 %%
