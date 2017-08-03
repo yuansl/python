@@ -25,8 +25,9 @@ D [0-9.]
 "<="  return LE;
 ">"   return GT;
 ">="  return GE;
+"=="  return EQ;
 "!"   return NOT;
 "if"  return IF;
 "then" return THEN;
-
+";"    return SEMICOLON;
 %%

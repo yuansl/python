@@ -14,18 +14,19 @@ extern int yyerror(const char *s);
 %token NUMBER  EOLN SEMICOLON SPACE LOG2 SIN IF THEN AND
 %left OR
 %left AND
-%left LT LE GT GE
+%left LT LE GT GE EQ
 %token PLUS MINUS 
 %left PLUS MINUS
 %left MUL DIV POW MOD
 %left NOT
 %left LPAREN RPAREN
 %%
-Grammar: stmt EOLN                     { printf("%f\n", $$); exit(0); }
+Grammar: stmt EOLN                { printf("%f\n", $$); exit(0); }
        ;
 
 stmt: /* Empty */
       | expr
+      | stmt SEMICOLON stmt       { $$ = $3; }
       | if_stmt
       ;
 
@@ -61,6 +62,7 @@ cond_expr: lt_expr
            | gt_expr
            | ge_expr
            | not_expr
+           | eq_expr
            ;
 
 lt_expr: expr LT expr { $$ = $1 < $3; }
@@ -77,6 +79,8 @@ logic_expr: expr AND expr { if ($1 && $3) $$=1; else $$=0; }
 ;
 not_expr: NOT expr { if ((int)$2 != 0)$$ = 0; else $$=1; }
 ;
+eq_expr: expr EQ expr { if ($1 == $3) $$=1; else $$=0; }
+         ;
 
 term: NUMBER { $$=$1; }
       ;
