@@ -7,9 +7,10 @@ YFLAGS = -d -l
 LDLIBS = -lfl -lm
 LDFLAGS = -L.
 
-OBJS = calc.c  calc-grammar.tab.o calc-grammar.tab.c  main.o
+OBJS =  *.tab.[ch] calc-lex.c *.o
+PROGRAM = calc
 
-all: calc
+all: $(PROGRAM)
 
 calc: calc-lex.o calc-grammar.tab.o main.o
 	$(CC) $(CFLAGS) -o $@ main.o calc-lex.o calc-grammar.tab.o $(LDLIBS)
@@ -23,4 +24,4 @@ calc-grammar.tab.c calc-grammar.tab.h: calc-grammar.y
 .PHONY: clean
 
 clean:
-	$(RM) $(OBJS)
+	$(RM) $(OBJS) $(PROGRAM)
