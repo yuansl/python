@@ -32,7 +32,7 @@ stmt: expr_stmt
 exit_stmt: EXIT                   { printf("exiting...\n"); exit(0); } 
            ;
 
-expr_stmt: expr EOLN              { printf("result>>> %f\n", $$); }
+expr_stmt: expr EOLN              { printf(">>> %f\n", $$); }
            ;
 
 expr:  LPAREN expr RPAREN { $$=$2;}
