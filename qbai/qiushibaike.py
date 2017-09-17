@@ -46,10 +46,15 @@ def get_article(html):
         article_id = a['href'][9:].strip()
         location = os.getcwd() + '/articles/' + article_id + '.txt'
         print('article:%s location: %s' % (article_id,location))
-        fd = open(location, 'w')
-        content = a.text.strip()
-        fd.write(content)
-        fd.close()
+        try:
+            fd = open(location, 'w')
+            content = a.text.strip()
+            fd.write(content)
+            fd.close()
+        except Exception as e:
+            if os.path.exists(os.getcwd()+'/articles'):
+                os.mkdir(os.getcwd()+'articles')
+            print(e)
 
         a = article.find('a', {'class':'indexGodCmt'})
         if a is not None:

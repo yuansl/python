@@ -12,6 +12,15 @@
 #include <errno.h>
 #include <libgen.h>
 #include <assert.h>
+
+#include <sys/shm.h>
+#include <sys/sem.h>
+#include <sys/msg.h>
+#include <sys/wait.h>
+#include <signal.h>
+
+#include <pthread.h>
+
 #define MAX_LINE 4096
 #define MAX_NAME 256
 #define MAX_REGMATCH 2
@@ -30,5 +39,7 @@ char *strcut(char *dst, const char *src, off_t so, off_t eo);
 regex_t *reg_compile(const char *regex_pattern);
 void err_msg(bool die, const char *fmt, ...);
 const char *skip_spaces(const char *s);
+void sig_chld(int);
+void err_quit(const char *fmt, ...);
 
 #endif

@@ -58,3 +58,20 @@ const char *skip_spaces(const char *s)
 		s++;
 	return s;
 }
+
+void sig_chld(int signo)
+{
+	waitpid(-1, NULL, WNOHANG);
+}
+
+void err_quit(const char *fmt, ...)
+{
+	va_list ap;
+	char buf[MAX_LINE];
+
+	va_start(ap, fmt);
+	vsprintf(buf, fmt, ap);
+	fprintf(stderr, "%s\n", buf);
+	va_end(ap);
+	exit(EXIT_FAILURE);
+}
