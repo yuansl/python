@@ -692,7 +692,7 @@ class SoundCloudSource(RB.StreamingSource):
 		# 'powerd by soundcloud' button
 		self.sc_button = Gtk.MenuButton()
 		self.sc_button.set_relief(Gtk.ReliefStyle.NONE)
-		img = Gtk.Image.new_from_file(rb.find_plugin_file(self.props.plugin, "powered-by-soundcloud.png"))
+		img = Gtk.Image.new_from_file(rb.find_plugin_file(self.props.plugin, "powered-by-doubanfm.png"))
 		self.sc_button.add(img)
 		box = builder.get_object("soundcloud-button-box")
 		box.pack_start(self.sc_button, True, True, 0)
