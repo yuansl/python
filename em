@@ -2,8 +2,6 @@
 
 import asyncio
 import os
-import sys
-import datetime
 
 async def __make_process(progname, argv):
     pid = os.fork()
@@ -18,13 +16,13 @@ async def wait_emacs_server(emacs_socket_name):
     while not os.path.exists(emacs_socket_name):
         timeout += 0.1
         await asyncio.sleep(timeout)
-        
+
 async def start_emacs():
     emacs_socket='/tmp/emacs'+str(os.getuid())+'/server'
     if not os.path.exists(emacs_socket):
         # start emacs server
         await __make_process('emacs', ['emacs'])
-        
+    import sys
     # start emacsclient
     if (len(sys.argv) > 1):
         await wait_emacs_server(emacs_socket)
@@ -34,7 +32,7 @@ async def start_emacs():
         argv.insert(2, '--socket-name')
         argv.insert(3, emacs_socket)
         await __make_process('emacsclient', argv)
-    
+
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.run_until_complete(start_emacs())
