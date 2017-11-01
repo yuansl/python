@@ -33,6 +33,7 @@ import rb
 from datetime import datetime
 from urllib import parse
 import time
+import requests
 from selenium import webdriver
 import threading
 import gettext
@@ -89,7 +90,7 @@ class SoundCloudSource(RB.StreamingSource):
 	def __init__(self, **kwargs):
 		super(SoundCloudSource, self).__init__(kwargs)
 
-		self.browser = None
+		self.browser = webdriver.PhantomJS()
 		
 		self.host = 'https://douban.fm'
 
@@ -175,35 +176,50 @@ class SoundCloudSource(RB.StreamingSource):
 		db.do_full_query_async_parsed(model, q)
 		self.props.query_model = model
 		self.songs.set_model(model)
-
+		
 	def add_track(self, db, entry_type, item):
 		"""Item should be a song-dict type with attrs ``[]``"""
+		if not isinstance(item, dict):
+			return
+
 		location = item['url']
 		entry = db.entry_lookup_by_location(location)
 		if entry:
 			db.entry_set(entry, RB.RhythmDBPropType.LAST_SEEN, self.search_count)
 		else:
-			entry = RB.RhythmDBEntry.new(db, entry_type, item['url'])
+			print('DEBUG## setting up entry of the track `%s`' % item['title'])
+			entry = RB.RhythmDBEntry.new(db, entry_type, location)
 			db.entry_set(entry, RB.RhythmDBPropType.MOUNTPOINT, item['url'])
 			home_page = 'https://douban.fm/song/%sg%s' % (item['sid'], item['ssid'])
+			print('debug## home page of the song: %s' % home_page)
 			db.entry_set(entry, RB.RhythmDBPropType.LOCATION, home_page)
 			db.entry_set(entry, RB.RhythmDBPropType.TITLE, item['title'])
-			db.entry_set(entry, RB.RhythmDBPropType.ARTIST, item['artist'])			
+			print('DEbug## title of the song: %s' % item['title'])
+			db.entry_set(entry, RB.RhythmDBPropType.ARTIST, item['artist'])
+			print('debug## artist of the song: %s' % item['artist'])
 			db.entry_set(entry, RB.RhythmDBPropType.ALBUM, item['albumtitle'])
+			print('debug## album of the song: %s' % item['album'])
 			genre = ''
 			for singer in item['singers']:
 				for gen in singer['genre']:
 					genre = genre + gen
 			db.entry_set(entry, RB.RhythmDBPropType.GENRE, genre)
+			print('debug## genre of the song: ', genre)
 			db.entry_set(entry, RB.RhythmDBPropType.DURATION, int(item['length']))
+			print('debug## duration of the song: ', item['length'])
 			db.entry_set(entry, RB.RhythmDBPropType.LAST_SEEN, self.search_count)
+			print('debug## search_count of the song: ', self.search_count)
 			db.entry_set(entry, RB.RhythmDBPropType.BEATS_PER_MINUTE, int(item.get('kbps', '128')))
+			print('debug### beats/s of the song: ', item.get('kbps','128'))
 			db.entry_set(entry, RB.RhythmDBPropType.MB_ALBUMID, item.get('albumtitle', ''))
+			print('debug## albumid of the song: ', item.get('albumtitle', ''))
 			public_year = item.get('public_time', '')
 			if public_year == '':
 				public_year = '1980'
+			print('debug## public year of the song: ', public_year)
 			release_year = int(public_year)
 			date = GLib.Date.new_dmy(item.get('release_day', 1), item.get('release_month', 1), release_year)
+			print('debug## public date of the song: ', item.get('release_day', 1))
 			db.entry_set(entry, RB.RhythmDBPropType.DATE, date.get_julian())
 		db.commit()
 
@@ -216,9 +232,7 @@ class SoundCloudSource(RB.StreamingSource):
 		self.containers.append([item.get(i) for i in ct['attributes']])
 
 	def search_tracks_api_cb(self, tracks):
-		if tracks is None:
-			return
-		if len(tracks) is 0:
+		if tracks is None or len(tracks) < 1:
 			return
 		shell = self.props.shell
 		db = shell.props.db
@@ -269,7 +283,7 @@ class SoundCloudSource(RB.StreamingSource):
 		self.search_tracks_api_cb(data)
 
 	def cancel_request(self):
-		if self.browser:
+		if self.browser is not None:
 			self.browser.delete_all_cookies()
 			self.browser.quit()
 			self.browser = None
@@ -330,7 +344,7 @@ class SoundCloudSource(RB.StreamingSource):
 		return url
 
 	def do_search(self):
-		self.cancel_request()
+		#self.cancel_request()
 
 		self.new_model()
 		self.containers.clear()
@@ -345,7 +359,7 @@ class SoundCloudSource(RB.StreamingSource):
 		st = self.search_types[self.search_type]
 		self.container_view.get_column(0).set_title(st['title'])
 		
-		self.browser = webdriver.PhantomJS()
+		#self.browser = webdriver.PhantomJS()
 		search_results = self.doubanfm_search()
 		
 		self.tasks.clear()
@@ -497,8 +511,8 @@ class SoundCloudSource(RB.StreamingSource):
 			
 	def doubanfm_retrive(self, kind, uri, cache_entry):
 		"""Get song info from douban.fm, then cache the info"""
-		self.cancel_request()
-		self.browser = webdriver.PhantomJS()
+		#self.cancel_request()
+		#self.browser = webdriver.PhantomJS()
 		
 		if self.doubanfm_cache.get(self.search_type, None) is None:
 			self.doubanfm_cache[self.search_type] = {}
@@ -543,10 +557,10 @@ class SoundCloudSource(RB.StreamingSource):
 
 		print("loading %s %s cache_entry %s" % (itemtype, uri, cache_entry))
 		if self.doubanfm_cache_exists(cache_entry):
-			print('#####cache exists')
+			print('##### cache exists')
 			self.doubanfm_fetch_cache(itemtype, cache_entry)
 		else:
-			print('###############cache does not exist.')
+			print('##### cache does not exist')
 			self.doubanfm_retrive(itemtype, uri, cache_entry)
 
 	def sort_order_changed_cb(self, obj, pspec):
@@ -578,7 +592,7 @@ class SoundCloudSource(RB.StreamingSource):
 		Gtk.show_uri(screen, uri, Gdk.CURRENT_TIME)
 
 	def build_sc_menu(self):
-		"""Create a Menu on self.sc_button: Powered by: SOUNDCLOUD"""
+		"""Create a Menu on self.sc_button: Powered by: doubanfm"""
 		menu = {}
 
 		# playing track
@@ -617,23 +631,30 @@ class SoundCloudSource(RB.StreamingSource):
 			m.append_item(i)
 		self.sc_button.set_menu_model(m)
 		self.sc_button.set_sensitive(True)
+	def doubanfm_random_song(self):
+		self.new_model()
+		# url = self.doubanfm_playlist_url(-10)
+		# r = requests.get(url, headers={'Host': 'douban.fm', 'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:56.0) Gecko/20100101 Firefox/56.0'})
+		# song_info = r.json()
+		
+		song_info = {'is_show_quick_start': 0, 'song': [{'release': {'id': '2050922', 'ssid': '679f', 'link': 'https://douban.fm/album/2050922g679f'}, 'singers': [{'id': '10921', 'name': 'AOKI takamasa', 'name_usual': 'AOKI takamasa', 'avatar': 'https://img1.doubanio.com/img/fmadmin/large/1676557.jpg', 'style': [], 'related_site_id': 0, 'region': ['日本'], 'genre': ['Electronic'], 'is_site_artist': False}], 'sid': '641', 'artist': 'AOKI takamasa', 'aid': '2050922', 'available_formats': {'192': 9653, '64': 3306, '128': 6377}, 'like': '0', 'update_time': 1470125553, 'album': '/subject/2050922/', 'title': 'Hope', 'url': 'http://mr1.doubanio.com/e474b2dfb42f9c5c67a25634a9949f00/0/fm/song/p641_128k.mp4', 'sha256': 'ae834cf1eb18005b35974235d3f1e495a43f308884350353adbe4a97b7f00da7', 'status': 0, 'length': 398, 'subtype': '', 'is_royal': False, 'file_ext': 'mp4', 'kbps': '128', 'picture': 'https://img3.doubanio.com/lpic/s2386811.jpg', 'alert_msg': '', 'albumtitle': 'Indigo Rose', 'ssid': 'f1ee', 'partner_sources': [], 'public_time': '2005'}], 'warning': 'user_is_ananymous', 'r': 0, 'version_max': 100}
+		
+		data = song_info['song']
+		self.search_tracks_api_cb(data)
+	def refresh_test(self):
+		print('Debug## refresh_test')
+		song_info = {'is_show_quick_start': 0, 'song': [{'release': {'id': '2050922', 'ssid': '679f', 'link': 'https://douban.fm/album/2050922g679f'}, 'singers': [{'id': '10921', 'name': 'AOKI takamasa', 'name_usual': 'AOKI takamasa', 'avatar': 'https://img1.doubanio.com/img/fmadmin/large/1676557.jpg', 'style': [], 'related_site_id': 0, 'region': ['日本'], 'genre': ['Electronic'], 'is_site_artist': False}], 'sid': '641', 'artist': 'AOKI takamasa', 'aid': '2050922', 'available_formats': {'192': 9653, '64': 3306, '128': 6377}, 'like': '0', 'update_time': 1470125553, 'album': '/subject/2050922/', 'title': 'Hope', 'url': 'http://mr1.doubanio.com/e474b2dfb42f9c5c67a25634a9949f00/0/fm/song/p641_128k.mp4', 'sha256': 'ae834cf1eb18005b35974235d3f1e495a43f308884350353adbe4a97b7f00da7', 'status': 0, 'length': 398, 'subtype': '', 'is_royal': False, 'file_ext': 'mp4', 'kbps': '128', 'picture': 'https://img3.doubanio.com/lpic/s2386811.jpg', 'alert_msg': '', 'albumtitle': 'Indigo Rose', 'ssid': 'f1ee', 'partner_sources': [], 'public_time': '2005'}], 'warning': 'user_is_ananymous', 'r': 0, 'version_max': 100}
+		data = song_info['song']
+		self.search_tracks_api_cb(data)
 
 	def setup(self):
 		shell = self.props.shell
 
 		builder = Gtk.Builder()
-		builder.add_from_file(rb.find_plugin_file(self.props.plugin, "soundcloud.ui"))
-
+		builder.add_from_file(rb.find_plugin_file(self.props.plugin, "doubanfm.ui"))
 		self.scrolled = builder.get_object("container-scrolled")
 		self.scrolled.set_no_show_all(True)
 		self.scrolled.hide()
-
-		self.search_entry = RB.SearchEntry(spacing=6)
-		self.search_entry.props.explicit_mode = True
-
-		action = Gio.SimpleAction.new("soundcloud-search-type", GLib.VariantType.new('s'))
-		action.connect("activate", self.search_type_action_cb)
-		shell.props.window.add_action(action)
 
 		m = Gio.Menu()
 		for st in sorted(self.search_types):
@@ -641,17 +662,22 @@ class SoundCloudSource(RB.StreamingSource):
 			i.set_label(self.search_types[st]['label'])
 			i.set_action_and_target_value("win.soundcloud-search-type", GLib.Variant.new_string(st))
 			m.append_item(i)
-
 		self.search_popup = Gtk.Menu.new_from_model(m)
-
-		action.activate(GLib.Variant.new_string(self.search_type))
-		grid = builder.get_object("soundcloud-source")
+		
+		self.search_entry = RB.SearchEntry(spacing=6)
+		self.search_entry.props.explicit_mode = True
 		self.search_entry.connect("search", self.search_entry_cb)
 		self.search_entry.connect("activate", self.search_entry_cb)
 		self.search_entry.connect("show-popup", self.search_popup_cb)
 		self.search_entry.set_size_request(400, -1)
-		builder.get_object("search-box").pack_start(self.search_entry, False, True, 0)
 		self.search_popup.attach_to_widget(self.search_entry, None)
+		
+		action = Gio.SimpleAction.new("soundcloud-search-type", GLib.VariantType.new('s'))
+		action.connect("activate", self.search_type_action_cb)
+		shell.props.window.add_action(action)
+		action.activate(GLib.Variant.new_string(self.search_type))
+
+		builder.get_object("search-box").pack_start(self.search_entry, False, True, 0)
 		self.containers = builder.get_object("container-store")
 		self.container_view = builder.get_object("containers")
 		self.container_view.set_model(self.containers)
@@ -665,7 +691,6 @@ class SoundCloudSource(RB.StreamingSource):
 		self.container_view.append_column(c)
 
 		self.container_view.get_selection().connect('changed', self.selection_changed_cb)
-
 		# A song title definition
 		self.songs = RB.EntryView(db=shell.props.db,
 					  shell_player=shell.props.shell_player,
@@ -684,21 +709,24 @@ class SoundCloudSource(RB.StreamingSource):
 		self.songs.set_model(self.props.query_model)
 		self.songs.connect("notify::sort-order", self.sort_order_changed_cb)
 		self.songs.connect("selection-changed", self.songs_selection_changed_cb)
+		self.doubanfm_random_song()
+		self.refresh_test()
 		paned = builder.get_object("paned")
 		paned.pack2(self.songs)
 
 		self.bind_settings(self.songs, paned, None, True)
 
-		# 'powerd by soundcloud' button
+		# 'powerd by doubanfm' button
 		self.sc_button = Gtk.MenuButton()
 		self.sc_button.set_relief(Gtk.ReliefStyle.NONE)
 		img = Gtk.Image.new_from_file(rb.find_plugin_file(self.props.plugin, "powered-by-doubanfm.png"))
 		self.sc_button.add(img)
-		box = builder.get_object("soundcloud-button-box")
+		box = builder.get_object("doubanfm-button-box")
 		box.pack_start(self.sc_button, True, True, 0)
 
 		self.build_sc_menu()
-
+		
+		grid = builder.get_object("soundcloud-source")
 		self.pack_start(grid, expand=True, fill=True, padding=0)
 		grid.show_all()
 
@@ -717,20 +745,20 @@ class SoundCloudSource(RB.StreamingSource):
 
 class downloader(threading.Thread):
 	def __init__(self, url, entry):
-		super(downloader, self).__init__()
+		super().__init__()
 		self.url = url
 		self.browser = webdriver.PhantomJS()
 		self.data = None
 		self.entry = entry
 
-	def get_url(self):
+	def retrieve(self):
 		self.browser.get(self.url)
 		body = self.browser.find_element_by_tag_name('body')
 		self.data = json.loads(body.text)
 
 	def run(self):
-		self.get_url()
-		if self.browser:
+		self.retrieve()
+		if self.browser is None:
 			self.browser.quit()
 
 GObject.type_register(SoundCloudSource)
