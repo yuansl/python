@@ -39,9 +39,7 @@ import threading
 import gettext
 gettext.install('rhythmbox', RB.locale_dir())
 
-# rhythmbox app registered with soundcloud with the account notverysmart@gmail.com
-
-class SoundCloudEntryType(RB.RhythmDBEntryType):
+class DoubanfmEntryType(RB.RhythmDBEntryType):
 	def __init__(self):
 		RB.RhythmDBEntryType.__init__(self, name='doubanfm')
 
@@ -66,11 +64,11 @@ class DoubanfmPlugin(GObject.Object, Peas.Activatable):
 
 		db = shell.props.db
 
-		self.entry_type = SoundCloudEntryType()
+		self.entry_type = DoubanfmEntryType()
 		db.register_entry_type(self.entry_type)
 
 		model = RB.RhythmDBQueryModel.new_empty(db)
-		self.source = GObject.new (SoundCloudSource,
+		self.source = GObject.new (DoubanfmSource,
 					   shell=shell,
 					   name=_("douban.fm"),
 					   plugin=self,
@@ -86,12 +84,12 @@ class DoubanfmPlugin(GObject.Object, Peas.Activatable):
 		self.source.delete_thyself()
 		self.source = None
 
-class SoundCloudSource(RB.StreamingSource):
+class DoubanfmSource(RB.StreamingSource):
 	def __init__(self, **kwargs):
-		super(SoundCloudSource, self).__init__(kwargs)
+		super(DoubanfmSource, self).__init__(kwargs)
 
 		self.browser = webdriver.PhantomJS()
-		
+		self.activated = False
 		self.host = 'https://douban.fm'
 
 		# default search type		
@@ -198,6 +196,7 @@ class SoundCloudSource(RB.StreamingSource):
 			db.entry_set(entry, RB.RhythmDBPropType.ARTIST, item['artist'])
 			print('debug## artist of the song: %s' % item['artist'])
 			db.entry_set(entry, RB.RhythmDBPropType.ALBUM, item['albumtitle'])
+			#db.entry_set(entry, RB.RhythmDBPropType.IMAGE, item['picture'])
 			print('debug## album of the song: %s' % item['album'])
 			genre = ''
 			for singer in item['singers']:
@@ -234,6 +233,7 @@ class SoundCloudSource(RB.StreamingSource):
 	def search_tracks_api_cb(self, tracks):
 		if tracks is None or len(tracks) < 1:
 			return
+		print('len(tracks)=%d' % len(tracks))
 		shell = self.props.shell
 		db = shell.props.db
 		entry_type = self.props.entry_type
@@ -283,7 +283,8 @@ class SoundCloudSource(RB.StreamingSource):
 		print(parameter.get_string() + " selected")
 		# return true if there is search text in the search entry
 		if self.search_entry.searching():
-			self.do_search()
+			#self.do_search()
+			return
 
 		st = self.search_types[self.search_type]
 		# set the 'placeholder' text in the search entry box
@@ -326,8 +327,9 @@ class SoundCloudSource(RB.StreamingSource):
 	
 	def doubanfm_songlist_url(self, songlist_id):
 		songlist_path = '/j/v2/songlist/%s/' % songlist_id
-		query = 'kbps=192'
+		query = 'kbps=128'
 		url = 'https://douban.fm' + songlist_path + '?' + query
+		print('DEBUG songlist url:%s' % url)
 		return url
 
 	def do_search(self):
@@ -342,11 +344,12 @@ class SoundCloudSource(RB.StreamingSource):
 		print("searching for " + self.search_type + 
 		      " matching " + self.search_text)
 		st = self.search_types[self.search_type]
-		self.container_view.get_column(0).set_title(st['title'])
+		
 		artists = []
 		channels = []
 		songs = []
 		songlists = []
+		
 		search_results = self.doubanfm_search()
 		for result in search_results:
 			if result['type'] == 'artist':
@@ -362,7 +365,9 @@ class SoundCloudSource(RB.StreamingSource):
 		self.doubanfm_cache[self.search_type] = None
 
 		if st['containers']:
+			self.container_view.get_column(0).set_title(st['title'])			
 			self.scrolled.show()
+			
 			data = []
 			self.doubanfm_cache[self.search_type] = {}
 			if self.search_type == 'artist':
@@ -429,21 +434,31 @@ class SoundCloudSource(RB.StreamingSource):
 				task = downloader(url, 'songlist')
 				self.tasks.append(task)
 				task.start()
-			print('len(songs)=%d' % len(songs))
 			self.search_tracks_api_cb(songs)
 			
-		for task in self.tasks:
-			if task.is_alive():
-				task.join()
-			# get_songlist
-			songlists = task.data
-			songs_data = songlists.get('songs', None)
-			if songs_data is not None:
-				print('len(songs_data)=%d' % len(songs_data))
-				songs += songs_data
-			self.doubanfm_cache['song'] = songs
+			song_titles = set()
+			for song in songs:
+				song_titles.add(song['title'])
+
+			print('song_titles: ', song_titles)
+				
+			for task in self.tasks:
+				if task.is_alive():
+					task.join()
+				# get_songlist
+				songlists = task.data
+				songs_data = songlists.get('songs', None)
+				if songs_data is not None:
+					print('len(songs_data)=%d' % len(songs_data))
+					for song in songs_data:
+						if song['title'] in song_titles:
+							songs_data.remove(song)
+					self.search_tracks_api_cb(songs_data)
+					songs += songs_data
+				else:
+					print('Warning: songs_data is None')
+				self.doubanfm_cache['song'] = songs
 		print('sum: len(songs) = %d' % len(songs))
-		self.search_tracks_api_cb(songs)
 			
 	def doubanfm_get(self, url, timeout):
 		self.browser.get(url)
@@ -558,6 +573,8 @@ class SoundCloudSource(RB.StreamingSource):
 		if entry.get_entry_type() != self.props.entry_type:
 			return
 
+		print('DEBUG## playing entry changed: %s' % entry.get_string(RB.RhythmDBPropType.LOCATION))
+
 		au = entry.get_string(RB.RhythmDBPropType.MB_ALBUMID)
 		if au:
 			key = RB.ExtDBKey.create_storage("title", entry.get_string(RB.RhythmDBPropType.TITLE))
@@ -613,18 +630,24 @@ class SoundCloudSource(RB.StreamingSource):
 			m.append_item(i)
 		self.sc_button.set_menu_model(m)
 		self.sc_button.set_sensitive(True)
+		
 	def doubanfm_random_song(self):
 		self.new_model()
 		
-		url = self.doubanfm_playlist_url(-10)
-		task = downloader(url, None)
-		task.start()
-		task.join()
-		song_info = task.data
-		#song_info = {'is_show_quick_start': 0, 'song': [{'release': {'id': '2050922', 'ssid': '679f', 'link': 'https://douban.fm/album/2050922g679f'}, 'singers': [{'id': '10921', 'name': 'AOKI takamasa', 'name_usual': 'AOKI takamasa', 'avatar': 'https://img1.doubanio.com/img/fmadmin/large/1676557.jpg', 'style': [], 'related_site_id': 0, 'region': ['日本'], 'genre': ['Electronic'], 'is_site_artist': False}], 'sid': '641', 'artist': 'AOKI takamasa', 'aid': '2050922', 'available_formats': {'192': 9653, '64': 3306, '128': 6377}, 'like': '0', 'update_time': 1470125553, 'album': '/subject/2050922/', 'title': 'Hope', 'url': 'http://mr1.doubanio.com/e474b2dfb42f9c5c67a25634a9949f00/0/fm/song/p641_128k.mp4', 'sha256': 'ae834cf1eb18005b35974235d3f1e495a43f308884350353adbe4a97b7f00da7', 'status': 0, 'length': 398, 'subtype': '', 'is_royal': False, 'file_ext': 'mp4', 'kbps': '128', 'picture': 'https://img3.doubanio.com/lpic/s2386811.jpg', 'alert_msg': '', 'albumtitle': 'Indigo Rose', 'ssid': 'f1ee', 'partner_sources': [], 'public_time': '2005'}], 'warning': 'user_is_ananymous', 'r': 0, 'version_max': 100}
+		# url = self.doubanfm_playlist_url(-10)
+		# task = downloader(url, None)
+		# task.start()
+		# task.join()
+		# song_info = task.data
+		song_info = {'is_show_quick_start': 0, 'song': [{'release': {'id': '2050922', 'ssid': '679f', 'link': 'https://douban.fm/album/2050922g679f'}, 'singers': [{'id': '10921', 'name': 'AOKI takamasa', 'name_usual': 'AOKI takamasa', 'avatar': 'https://img1.doubanio.com/img/fmadmin/large/1676557.jpg', 'style': [], 'related_site_id': 0, 'region': ['日本'], 'genre': ['Electronic'], 'is_site_artist': False}], 'sid': '641', 'artist': 'AOKI takamasa', 'aid': '2050922', 'available_formats': {'192': 9653, '64': 3306, '128': 6377}, 'like': '0', 'update_time': 1470125553, 'album': '/subject/2050922/', 'title': 'Hope', 'url': 'http://mr1.doubanio.com/e474b2dfb42f9c5c67a25634a9949f00/0/fm/song/p641_128k.mp4', 'sha256': 'ae834cf1eb18005b35974235d3f1e495a43f308884350353adbe4a97b7f00da7', 'status': 0, 'length': 398, 'subtype': '', 'is_royal': False, 'file_ext': 'mp4', 'kbps': '128', 'picture': 'https://img3.doubanio.com/lpic/s2386811.jpg', 'alert_msg': '', 'albumtitle': 'Indigo Rose', 'ssid': 'f1ee', 'partner_sources': [], 'public_time': '2005'}], 'warning': 'user_is_ananymous', 'r': 0, 'version_max': 100}
 		print(song_info)
 		data = song_info['song']
 		self.search_tracks_api_cb(data)
+
+	def do_selected(self):
+		if not self.activated:
+			self.activated = True
+			self.doubanfm_random_song()
 
 	def setup(self):
 		shell = self.props.shell
@@ -689,8 +712,6 @@ class SoundCloudSource(RB.StreamingSource):
 		self.songs.connect("notify::sort-order", self.sort_order_changed_cb)
 		self.songs.connect("selection-changed", self.songs_selection_changed_cb)
 		
-		self.doubanfm_random_song()
-
 		paned = builder.get_object("paned")
 		paned.pack2(self.songs)
 
@@ -727,22 +748,22 @@ class downloader(threading.Thread):
 	def __init__(self, url, entry):
 		super().__init__()
 		self.url = url
-		#self.browser = webdriver.PhantomJS()
+		self.browser = webdriver.PhantomJS()
 		self.data = {}
 		self.entry = entry
 
 	def retrieve(self):
-		#self.browser.get(self.url)
-		#body = self.browser.find_element_by_tag_name('body')
-		#self.data = json.loads(body.text)
-		r = requests.get(self.url, headers={'Host': 'douban.fm', 'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:56.0) Gecko/20100101 Firefox/56.0'})
-		if r.status_code == 200:
-			self.data = r.json()
+		self.browser.get(self.url)
+		body = self.browser.find_element_by_tag_name('body')
+		self.data = json.loads(body.text)
+		#r = requests.get(self.url, headers={'Host': 'douban.fm', 'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:56.0) Gecko/20100101 Firefox/56.0'})
+		# if r.status_code == 200:
+		# 	self.data = r.json()
 
 	def run(self):
 		self.retrieve()
 		
-		# if self.browser is None:
-		# 	self.browser.quit()
+		if self.browser is not None:
+		 	self.browser.quit()
 
-GObject.type_register(SoundCloudSource)
+GObject.type_register(DoubanfmSource)
