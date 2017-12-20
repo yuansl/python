@@ -20,7 +20,7 @@
       <column type="gchararray"/>
     </columns>
   </object>
-  <object class="GtkGrid" id="soundcloud-source">
+  <object class="GtkGrid" id="doubanfm-source">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
     <property name="vexpand">True</property>
