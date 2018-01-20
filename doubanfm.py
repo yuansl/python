@@ -36,7 +36,6 @@ from gi.repository import Gtk, Gdk, GObject, Gio, GLib, Peas
 gi.require_version('RB', '3.0')
 from gi.repository import RB
 import rb
-from selenium import webdriver
 
 gettext.install('rhythmbox', RB.locale_dir())
 
@@ -104,7 +103,7 @@ class DoubanfmSource(RB.StreamingSource):
         self.search_entry = None
         self.search_popup = None
         self.containers = None
-
+        
         # default search type
         self.search_type = 'all'
         self.doubanfm_cache = {}
@@ -495,7 +494,8 @@ class DoubanfmSource(RB.StreamingSource):
             return
         if entry.get_entry_type() != self.props.entry_type:
             return
-        print('DEBUG## playing entry changed: %s' % entry.get_string(RB.RhythmDBPropType.LOCATION))
+        
+        print('playing entry changed: %s' % entry.get_string(RB.RhythmDBPropType.LOCATION))
         au = entry.get_string(RB.RhythmDBPropType.MB_ALBUMID)
         if au:
             key = RB.ExtDBKey.create_storage("title", entry.get_string(RB.RhythmDBPropType.TITLE))
@@ -553,12 +553,23 @@ class DoubanfmSource(RB.StreamingSource):
             m.append_item(i)
             self.sc_button.set_menu_model(m)
             self.sc_button.set_sensitive(True)
+    def entry_opt(self, data):
+        print(data)
 
     def random_song_cb(self, jsondata):
         song_info = json.loads(jsondata.decode())
         songs = song_info['song']
         self.search_tracks_api_cb(songs)
-        print("DEBUG## len(songs)=%d" % len(self.props.base_query_model))
+        if len(songs) > 0:
+            shell = self.props.shell
+            entry_count = shell.props.db.entry_count()            
+            entry = shell.props.db.entry_lookup_by_id(entry_count)
+            if entry is not None:
+                print("entry %d: %s, duration: %d" % (entry_count, entry.get_string(RB.RhythmDBPropType.LOCATION), entry.get_ulong(RB.RhythmDBPropType.DURATION)))
+                shell.load_uri(entry.get_string(RB.RhythmDBPropType.LOCATION), True)
+                threading.Timer(entry.get_ulong(RB.RhythmDBPropType.DURATION)+1, self.doubanfm_random_song)
+        else:
+            self.doubanfm_random_song()
 
     def doubanfm_random_song(self):
         self.new_model()
@@ -669,33 +680,5 @@ class DoubanfmSource(RB.StreamingSource):
 
     def do_can_copy(self):
         return False
-
-
-class Downloader(threading.Thread):
-    """Downloader based on webdriver.PhantomJS"""
-    def __init__(self, url, entry):
-        super().__init__()
-        self.url = url
-        self.browser = webdriver.PhantomJS()
-        self.data = {}
-        self.entry = entry
-
-    def retrieve(self):
-        self.browser.get(self.url)
-        body = self.browser.find_element_by_tag_name('body')
-        self.data = json.loads(body.text)
-        # r = requests.get(self.url, headers={
-        # 'Host': 'douban.fm',
-        # 'User-Agent':
-        # 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:56.0) Gecko/20100101 Firefox/56.0'})
-        # if r.status_code == 200:
-        # 	self.data = r.json()
-
-    def run(self):
-        self.retrieve()
-
-        if self.browser is not None:
-            self.browser.quit()
-
 
 GObject.type_register(DoubanfmSource)
