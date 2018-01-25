@@ -23,12 +23,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA.
-import time
 import json
 import urllib.parse as parse
-import threading
 import gettext
-
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Peas', '1.0')
@@ -222,7 +219,10 @@ class DoubanfmSource(RB.StreamingSource):
             public_year = item.get('public_time', '')
             if public_year == '':
                 public_year = '1980'
-            release_year = int(public_year)
+            try:
+                release_year = int(public_year)
+            except Exception as e:
+                release_year = 1980
             date = GLib.Date.new_dmy(item.get('release_day', 1),
                                      item.get('release_month', 1), release_year)
             db.entry_set(entry, RB.RhythmDBPropType.DATE, date.get_julian())
@@ -384,7 +384,7 @@ class DoubanfmSource(RB.StreamingSource):
 
     def doubanfm_get(self, url, timeout):
         self.browser.get(url)
-        time.sleep(timeout)
+        GLib.timeout_add_seconds(timeout, lambda : False)
         body = self.browser.find_element_by_tag_name('body')
         data = json.loads(body.text)
         print('body=%s' % str(data))
@@ -565,9 +565,10 @@ class DoubanfmSource(RB.StreamingSource):
             entry_count = shell.props.db.entry_count()            
             entry = shell.props.db.entry_lookup_by_id(entry_count)
             if entry is not None:
-                print("entry %d: %s, duration: %d" % (entry_count, entry.get_string(RB.RhythmDBPropType.LOCATION), entry.get_ulong(RB.RhythmDBPropType.DURATION)))
+                print("entry %d: %s" % (entry_count, entry.get_string(RB.RhythmDBPropType.LOCATION)))
                 shell.load_uri(entry.get_string(RB.RhythmDBPropType.LOCATION), True)
-                threading.Timer(entry.get_ulong(RB.RhythmDBPropType.DURATION)+1, self.doubanfm_random_song)
+                timeout = entry.get_ulong(RB.RhythmDBPropType.DURATION)
+                GLib.timeout_add_seconds(timeout, self.doubanfm_random_song)
         else:
             self.doubanfm_random_song()
 
