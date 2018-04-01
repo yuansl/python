@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import os
+import time
 import threading
 import requests
 from bs4 import BeautifulSoup
@@ -28,7 +29,7 @@ class downloader(threading.Thread):
 class House():
     def __init__(self, url, house_info, rent_mode, specs, contact):
         self.url = url
-        self.house_info = house_info
+        self.info = house_info
         self.rent_mode = rent_mode
         self.specs = specs
         self.address = ''
@@ -36,7 +37,7 @@ class House():
 
     def __str__(self):
         house_info = { 'url': self.url,
-                       'house_info': self.house_info,
+                       'house_info': self.info,
                        'rent-mode': self.rent_mode,
                        'specification': self.specs,
                        'contact': self.contact }
@@ -46,13 +47,10 @@ def get_house_info(url):
     """print house info from `url` at anjuke.com
     url = 'https://sh.zu.anjuke.com/fangyuan/$id'
     """
-    if os.path.exists('./1138350612.fangyuan.html'):
-        with open('./1138350612.fangyuan.html', 'r') as fd:
-            html_page = fd.read()
-    else:
-        req = requests.get(url,headers=mozilla_headers)
-        html_page = req.text
-        
+    print('get house info of `%s`' % url)
+    req = requests.get(url,headers=mozilla_headers)
+    html_page = req.text
+    
     bsobj = BeautifulSoup(html_page, "lxml")
     info = bsobj.find('div', {'class': 'auto-general'})
     if info is not None:
@@ -66,6 +64,10 @@ def get_house_info(url):
             street = title_basic_info.find('ul')
             if street is not None:
                 rent_mode = __(street.text)
+    else:
+         house_info = ''
+         specs_desc = ''
+         rent_mode = ''
     # contact
     brokerInfo = bsobj.find('div', {'class': 'brokerInfo'})
     if brokerInfo is not None:
@@ -74,35 +76,52 @@ def get_house_info(url):
             name = bInfo.find('strong', class_='name')
             phone = bInfo.find('strong', class_='phone')
             contact = __(name.text) + ' ' + __(phone.text)
+    else:
+        contact = ''
     return House(url, house_info, rent_mode, specs_desc, contact)
             
 class anjuke_entry():
     def __init__(self, location='songjiang'):
         self.headers = mozilla_headers
-        self.url = 'https://sh.zu.anjuke.com/fangyuan/%s/' % location
+        self.start_page = 'https://sh.zu.anjuke.com/fangyuan/%s/' % location
         self.db = Anjukedb()
         self.tasks = []
-        
-    def run(self):
-        self.db.connect()
-        if os.path.exists('./jiuting.html'):
-            with open('./jiuting.html', 'r') as fd:
-                html_page = fd.read()
-        else:
-            req = requests.get(self.url,headers=self.headers)
-            html_page = req.text
-        
+        self.links = set()
+
+    def traverse_link(self, url):
+        req = requests.get(url,headers=self.headers)
+        html_page = req.text
         bsobj = BeautifulSoup(html_page, "lxml")
         items = bsobj.findAll('div', {'class': 'zu-itemmod'})
         for item in items:
             self.digest_info(item)
-        
+            
         # waiting for tasks to stop
         for task in self.tasks:
             if task.is_alive():
                 task.join()
-            print(task.data)
-            #self.db.insert_house()
+            house = task.data
+            print('house.url = %s' % house.url)
+            print('house.rent_mode=%s' % house.rent_mode)
+            print('house.address=%s' % house.address)
+            print('house.specs=%s' % house.specs)
+            print('house.info=%s' % house.info)
+            print('house.contact=%s' % house.contact)
+            self.db.insert_house(house.url, house.rent_mode, house.address, house.specs, house.contact, house.info)
+
+        self.db.conn.commit()
+        more_pages = bsobj.find('div', {'class': 'multi-page'})
+        if more_pages is not None:
+            atags = more_pages.findAll('a')
+            for a in atags:
+                self.links.add(a['href'])
+
+    def run(self):
+        self.db.connect()
+        self.links.add(self.start_page)
+        while len(self.links) > 0:
+            self.traverse_link(self.links.pop())
+            time.sleep(5)
         self.db.close()
 
     def digest_info(self, item):
